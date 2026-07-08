@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Create account — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png" sizes="128x128" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <main class="auth-wrap">
+    <div class="card auth-card">
+      <a class="brand mb-2" href="index.html"><img src="vitality-logo-icon.png" class="brand-logo" alt="Vitality logo"/><span>Vitality</span></a>
+      <h2>Create your account</h2>
+      <p class="muted text-sm mb-3">Takes less than a minute.</p>
+      <form id="signup-form" class="stack" novalidate>
+        <div>
+          <label for="name">Full name</label>
+          <input id="name" required maxlength="80" placeholder="Enter your full name" />
+        </div>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" required placeholder="you@example.com" />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="password" required minlength="6" />
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label for="age">Age</label>
+            <input id="age" type="number" min="13" max="100" placeholder="Enter your age" />
+          </div>
+          <div>
+            <label for="sex">Sex</label>
+            <select id="sex">
+              <option value="">Prefer not to say</option>
+              <option>male</option><option>female</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label for="goal">Health goal</label>
+          <select id="goal">
+            <option value="maintenance">General wellness / Maintain</option>
+            <option value="weight_loss">Lose weight</option>
+            <option value="weight_gain">Gain weight</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Create account</button>
+      </form>
+      <p class="text-sm mt-3 center muted">Already have an account? <a href="login.html">Log in</a></p>
+    </div>
+  </main>
+  <script type="module">
+    import { registerApi } from './js/auth.js';
+    import { toast } from './js/utils.js';
+    const btn = document.querySelector('button[type="submit"]');
+    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = (id) => document.getElementById(id).value.trim();
+      const email = f('email');
+      const pw = document.getElementById('password').value;
+      if (!f('name') || !email || pw.length < 6) { toast('Please fill in name, email, and password (6+ chars).', 'error'); return; }
+      btn.disabled = true; btn.textContent = 'Creating account…';
+      try {
+        await registerApi(f('name'), email, pw, f('age'), f('sex'), f('goal'));
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        toast(err.message || 'Registration failed. Try a different email.', 'error');
+        btn.disabled = false; btn.textContent = 'Create account';
+      }
+    });
+  </script>
+</body>
+</html>

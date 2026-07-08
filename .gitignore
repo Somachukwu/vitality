@@ -1,0 +1,85 @@
+# ── Secrets & environment ─────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Virtual environments ──────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── ML model artefacts (large files — keep out of git) ────────
+vita-backend/food_cv/trained_model/
+vita-backend/food_cv/dataset/split/
+# Raw dataset images: exclude to keep repo size manageable.
+# If you need to version the dataset, use Git LFS or a dedicated
+# data store (e.g. Google Drive, DVC).
+vita-backend/food_cv/dataset/raw/
+*.keras
+*.h5
+*.tflite
+*.pb
+*.onnx
+*.pt
+*.pth
+
+# ── Uploaded user images ──────────────────────────────────────
+vita-backend/uploads/
+uploads/
+
+# ── ESP32 device secrets (WiFi credentials + API keys) ─────────
+vita-esp32/vita_station/config.h
+vita-esp32/vita_wearable/config.h
+
+# ── Jupyter ───────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb~
+
+# ── Node / frontend tooling ───────────────────────────────────
+node_modules/
+dist/
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/
+.nitro/
+*.local
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+vita_*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ── IDE / OS ─────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.sw?
+
+# ── Claude Code session data ──────────────────────────────────
+.claude/
+~/
+
+# ── Misc ─────────────────────────────────────────────────────
+*.tmp
+*.bak

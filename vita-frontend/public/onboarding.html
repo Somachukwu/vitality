@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Set up your profile — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png" sizes="128x128" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <main class="auth-wrap">
+    <div class="card auth-card">
+      <h2>One last step</h2>
+      <p class="muted text-sm mb-3">Help us tailor your daily targets.</p>
+      <form id="onb-form" class="stack" novalidate>
+        <div class="grid grid-2">
+          <div>
+            <label for="height">Height (cm)</label>
+            <input id="height" type="number" min="100" max="240" placeholder="Enter your height" required />
+          </div>
+          <div>
+            <label for="weight">Weight (kg)</label>
+            <input id="weight" type="number" min="30" max="250" step="0.1" placeholder="Enter your weight" required />
+          </div>
+        </div>
+        <div>
+          <label for="cal">Daily calorie target</label>
+          <input id="cal" type="number" min="1200" max="4000" placeholder="Enter daily calorie target" required />
+        </div>
+        <div>
+          <label for="diet">Dietary restrictions (comma-separated, optional)</label>
+          <input id="diet" placeholder="e.g. lactose, gluten" />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Continue to dashboard</button>
+      </form>
+    </div>
+  </main>
+  <script type="module">
+    import { getUser, saveUser, requireAuth } from './js/auth.js';
+    requireAuth();
+    document.getElementById('onb-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const u = getUser();
+      u.heightCm = Number(document.getElementById('height').value);
+      u.weightKg = Number(document.getElementById('weight').value);
+      u.dailyCalorieTarget = Number(document.getElementById('cal').value);
+      u.dietaryRestrictions = document.getElementById('diet').value.split(',').map(s => s.trim()).filter(Boolean);
+      saveUser(u);
+      window.location.href = 'dashboard.html';
+    });
+  </script>
+</body>
+</html>

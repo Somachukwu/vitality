@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Insights — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png" sizes="128x128" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <div class="app has-side">
+    <aside class="side-nav"></aside>
+    <div>
+      <header class="app-header header-with-controls">
+        <div class="container">
+          <h2>Insights</h2>
+          <div class="header-controls">
+            <select id="type-filter">
+              <option value="">All types</option>
+              <option value="nutrition">Nutrition</option>
+              <option value="activity">Activity</option>
+              <option value="health_alert">Health alert</option>
+              <option value="goal_progress">Goal progress</option>
+            </select>
+            <button class="btn btn-ghost" id="theme-btn" aria-label="Toggle theme"><i data-lucide="moon"></i></button>
+          </div>
+        </div>
+      </header>
+      <main class="container stack" id="list"></main>
+    </div>
+  </div>
+  <script async src="https://unpkg.com/lucide@latest" onload="window.lucide&&window.lucide.createIcons()"></script>
+  <script type="module" src="js/recommendations.js"></script>
+</body>
+</html>
