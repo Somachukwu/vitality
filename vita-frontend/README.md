@@ -1,6 +1,5 @@
-# Vita — Health & Nutrition Frontend
+# Vitality — Health & Nutrition Frontend
 
-Vanilla HTML/CSS/JS (no build step). Open `index.html` directly or use VS Code Live Server.
 
 ## Structure
 - `index.html` — landing
