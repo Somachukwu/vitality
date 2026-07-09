@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log in — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png"/>
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <main class="auth-wrap">
+    <div class="card auth-card">
+      <a class="brand mb-2" href="index.html"><img src="vitality-logo-icon.png" class="brand-logo" alt="Vitality logo"/><span>Vitality</span></a>
+      <h2>Welcome back</h2>
+      <p class="muted text-sm mb-3">Log in to see today's vitals and nutrition.</p>
+      <form id="login-form" class="stack" novalidate>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" required placeholder="you@example.com" />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="password" required minlength="6" placeholder="••••••••" />
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Log in</button>
+      </form>
+      <p class="text-sm mt-3 center muted">New here? <a href="register.html">Create an account</a></p>
+    </div>
+  </main>
+  <script type="module">
+    import { loginApi } from './js/auth.js';
+    import { toast } from './js/utils.js';
+    const btn = document.querySelector('button[type="submit"]');
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value.trim();
+      const pw = document.getElementById('password').value;
+      if (!email || pw.length < 6) { toast('Enter a valid email and password (6+ chars).', 'error'); return; }
+      btn.disabled = true; btn.textContent = 'Logging in…';
+      try {
+        await loginApi(email, pw);
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        toast(err.message || 'Login failed. Check your credentials.', 'error');
+        btn.disabled = false; btn.textContent = 'Log in';
+      }
+    });
+  </script>
+</body>
+</html>

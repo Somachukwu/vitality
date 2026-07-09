@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <div class="app has-side">
+    <aside class="side-nav"></aside>
+    <div>
+      <header class="app-header">
+        <div class="container">
+          <div>
+            <div class="text-xs muted">Good Day</div>
+            <strong id="hello-name">Hello</strong>
+          </div>
+          <div class="row gap-sm">
+            <button class="btn btn-ghost" id="sync-btn"><i data-lucide="refresh-cw"></i><span>Sync</span></button>
+            <button class="btn btn-ghost" id="theme-btn" aria-label="Toggle theme"><i data-lucide="moon"></i></button>
+          </div>
+        </div>
+      </header>
+
+      <main class="container stack">
+        <!-- Today's recommendation -->
+        <section class="rec-card" id="rec-card">
+          <span class="rec-badge"><i data-lucide="sparkles"></i> Today's tip</span>
+          <p id="rec-text" style="margin-top:0.75rem; font-size:1.0625rem; line-height:1.5">Loading…</p>
+          <div class="text-xs mt-2" style="opacity:0.85" id="rec-trigger"></div>
+        </section>
+
+        <!-- Vitals -->
+        <section>
+          <div class="row between mb-1">
+            <h2>Vitals</h2>
+            <span class="text-xs muted" id="last-sync">—</span>
+          </div>
+          <div class="grid grid-4">
+            <div class="vital">
+              <div class="vital-label"><span class="heart-pulse">♥</span> Heart rate</div>
+              <div><span class="vital-value num" id="v-hr">—</span><span class="vital-unit">bpm</span></div>
+              <div class="text-xs mt-1" id="s-hr"></div>
+            </div>
+            <div class="vital">
+              <div class="vital-label">SpO₂</div>
+              <div><span class="vital-value num" id="v-spo2">—</span><span class="vital-unit">%</span></div>
+              <div class="text-xs mt-1" id="s-spo2"></div>
+            </div>
+            <div class="vital">
+              <div class="vital-label">Temperature</div>
+              <div><span class="vital-value num" id="v-temp">—</span><span class="vital-unit">°C</span></div>
+              <div class="text-xs mt-1" id="s-temp"></div>
+            </div>
+            <div class="vital">
+              <div class="vital-label">Humidity</div>
+              <div><span class="vital-value num" id="v-hum">—</span><span class="vital-unit">%</span></div>
+              <div class="text-xs mt-1 muted">Ambient</div>
+            </div>
+            <div class="vital">
+              <div class="vital-label">Weight</div>
+              <div><span class="vital-value num" id="v-wt">—</span><span class="vital-unit">kg</span></div>
+              <div class="text-xs mt-1 muted">From scale</div>
+            </div>
+            <div class="vital">
+              <div class="vital-label">Steps today</div>
+              <div><span class="vital-value num" id="v-steps">—</span></div>
+              <div class="text-xs mt-1 muted">Goal: 10,000</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Nutrition + actions -->
+        <section class="grid grid-2">
+          <div class="card">
+            <div class="card-title">Today's nutrition</div>
+            <div class="nutrition-row">
+              <div class="nutrition-ring">
+                <svg viewBox="0 0 120 120" width="140" height="140" class="ring" aria-hidden="true">
+                  <circle class="ring-bg" cx="60" cy="60" r="52" fill="none" stroke-width="12"/>
+                  <circle class="ring-fg" id="cal-ring" cx="60" cy="60" r="52" fill="none" stroke-width="12"
+                    stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+                </svg>
+                <div style="position:absolute; inset:0; display:grid; place-items:center; text-align:center">
+                  <div>
+                    <div class="num" style="font-size:1.5rem; font-weight:600" id="cal-eaten">0</div>
+                    <div class="text-xs muted">/ <span class="num" id="cal-goal">2200</span> kcal</div>
+                  </div>
+                </div>
+              </div>
+              <div class="nutrition-chart">
+                <div class="nutrition-chart-canvas"><canvas id="macros-chart"></canvas></div>
+              </div>
+            </div>
+            <div class="text-xs muted mt-1"><span id="meal-count">0</span> meals logged today</div>
+          </div>
+
+          <div class="card stack">
+            <div class="card-title">Quick actions</div>
+            <a class="btn btn-accent btn-block" href="food-log.html"><i data-lucide="camera"></i> Log a meal</a>
+            <button class="btn btn-primary btn-block" id="sync-btn-2"><i data-lucide="refresh-cw"></i> Sync device</button>
+            <a class="btn btn-ghost btn-block" href="vitals.html"><i data-lucide="line-chart"></i> View vitals history</a>
+            <a class="btn btn-ghost btn-block" href="recommendations.html"><i data-lucide="sparkles"></i> All recommendations</a>
+          </div>
+        </section>
+
+        <section>
+          <div class="row between mb-1">
+            <h2>Recent meals</h2>
+            <a class="text-sm" href="food-log.html">See all →</a>
+          </div>
+          <div class="list" id="recent-meals"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script async src="https://unpkg.com/lucide@latest" onload="window.lucide&&window.lucide.createIcons()"></script>
+  <script async src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vitals history — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png" sizes="128x128" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <div class="app has-side">
+    <aside class="side-nav"></aside>
+    <div>
+      <header class="app-header header-with-controls">
+        <div class="container">
+          <h2>Vitals history</h2>
+          <div class="header-controls">
+            <select id="range">
+              <option value="1">Last 24 hours</option>
+              <option value="7" selected>Last 7 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+            <button class="btn btn-ghost" id="theme-btn" aria-label="Toggle theme"><i data-lucide="moon"></i></button>
+            <button class="btn btn-primary" id="sync"><i data-lucide="refresh-cw"></i> Sync</button>
+          </div>
+        </div>
+      </header>
+      <main class="container stack">
+        <div class="text-xs muted" id="last-sync">—</div>
+        <div class="card"><div class="card-title">Heart rate (bpm)</div><div class="chart-canvas"><canvas id="c-hr"></canvas></div></div>
+        <div class="card"><div class="card-title">SpO₂ (%)</div><div class="chart-canvas"><canvas id="c-spo2"></canvas></div></div>
+        <div class="card"><div class="card-title">Body temperature (°C)</div><div class="chart-canvas"><canvas id="c-temp"></canvas></div></div>
+        <div class="card"><div class="card-title">Weight (kg)</div><div class="chart-canvas"><canvas id="c-wt"></canvas></div></div>
+        <div class="card">
+          <div class="card-title">Anomalies</div>
+          <div class="list" id="anomalies"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script async src="https://unpkg.com/lucide@latest" onload="window.lucide&&window.lucide.createIcons()"></script>
+  <script async src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script type="module" src="js/vitals.js"></script>
+</body>
+</html>
