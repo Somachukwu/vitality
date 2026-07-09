@@ -14,7 +14,7 @@
 #define WIFI_PASSWORD  "your-wifi-password"
 
 // ── 2. Backend Server ─────────────────────────────────────────
-// Run  find_server_ip.py  (or start_server.bat) to keep these URLs current.
+// Run  find_server_ip.py  to keep these URLs current.
 #define SERVER_INGEST_URL         "http://YOUR_PC_IP:8000/api/vitals/ingest"
 #define SERVER_HEALTH_URL         "http://YOUR_PC_IP:8000/api/health"
 #define SERVER_DEVICE_STATUS_URL  "http://YOUR_PC_IP:8000/api/devices/status"

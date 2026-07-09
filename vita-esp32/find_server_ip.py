@@ -8,8 +8,6 @@ define in both config.h files so you never have to edit them manually.
 
 Usage (from any directory):
     python vita-esp32/find_server_ip.py
-    -- or --
-    Double-click  start_server.bat  in vita-backend/ (runs this first, then uvicorn)
 
 Re-run whenever your machine changes WiFi networks.
 """
@@ -91,7 +89,7 @@ def main():
 
     print()
     print("  Done.  Next steps:")
-    print("  1. Run start_server.bat (or: uvicorn app.main:app --host 0.0.0.0 --port 8000)")
+    print("  1. Start the backend: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload")
     print("  2. Flash both ESP32 boards")
     print("  3. Watch the OLED for 'Server: ONLINE' then 'API key: VALID'")
     print()

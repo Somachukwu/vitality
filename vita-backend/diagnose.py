@@ -155,7 +155,6 @@ def check_server() -> bool:
         print("[HTTP]     cd vita-backend")
         print("[HTTP]     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload")
         print()
-        print("[HTTP]   Or double-click vita-backend/start_server.bat")
         return False
     except Exception as e:
         print(f"[HTTP] ✗ Unexpected error: {e}")

@@ -59,7 +59,6 @@ Fitbit vitals + CV food logs
 - `rules/` — the actual rule definitions, split by category
 - `ml/` — anomaly + trend detection, both optional/graceful with sparse data
 - `recommendation_service.py` — the single function your backend calls: `generate_recommendations(...)`
-- `api_example.py` — example FastAPI route showing integration (adapt to your own DB functions)
 - `test_smoke.py` — runnable example with synthetic data
 
 ## How to integrate into your existing backend
