@@ -1,4 +1,4 @@
-import { requireAuth, getUser } from './auth.js';
+import { requireAuth, getUser, saveUser } from './auth.js';
 import { renderNav } from './nav.js';
 import { countUp, vitalsStatus, statusDot, formatTime, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart } from './utils.js';
 import { api, resolveApiUrl } from './api.js';
@@ -7,7 +7,7 @@ applyStoredTheme();
 requireAuth();
 renderNav('dashboard.html');
 
-const user = getUser();
+let user = getUser();
 document.getElementById('hello-name').textContent = user.name?.split(' ')[0] || 'there';
 document.getElementById('theme-btn').addEventListener('click', toggleTheme);
 
@@ -112,6 +112,18 @@ function renderRecentMeals(meals) {
 }
 
 async function loadAll() {
+  // Profile — source of truth for the calorie target and display name.
+  // The localStorage cache only ever holds {id, name, email} from login/register,
+  // so it never reflects a target the user set later in Profile settings.
+  let calorieGoal = user.daily_calorie_target || 2200;
+  try {
+    const profile = await api.get('/users/profile');
+    user = { ...user, ...profile };
+    saveUser(user);
+    document.getElementById('hello-name').textContent = profile.name?.split(' ')[0] || 'there';
+    calorieGoal = profile.daily_calorie_target || 2200;
+  } catch { /* fall back to cached/default goal */ }
+
   // Vitals
   try {
     const v = await api.get('/vitals/latest');
@@ -123,18 +135,27 @@ async function loadAll() {
   // Recommendations
   try {
     const recs = await api.get('/recommendations/');
-    if (recs.length) renderRec(recs[0]);
-  } catch { /* ignore */ }
+    if (recs.length) {
+      renderRec(recs[0]);
+    } else {
+      document.getElementById('rec-text').textContent = 'No tips yet — log a meal or sync your device to get personalized recommendations.';
+    }
+  } catch {
+    document.getElementById('rec-text').textContent = 'Could not load your recommendation right now.';
+  }
 
   // Meals (today)
   try {
     const rawMeals = await api.get('/meals/');
     const today = new Date().toISOString().slice(0, 10);
     const todayMeals = rawMeals.filter(m => m.logged_at.slice(0, 10) === today).map(adaptMeal);
-    const calorieGoal = user.daily_calorie_target || 2200;
     await renderNutrition(todayMeals, calorieGoal);
     renderRecentMeals(todayMeals);
-  } catch { /* ignore */ }
+  } catch {
+    // Still show the real goal (and an empty ring) even if today's meals failed to load
+    await renderNutrition([], calorieGoal);
+    document.getElementById('recent-meals').innerHTML = '<div class="card center muted">Could not load meals.</div>';
+  }
 
   initLucide();
 }
