@@ -8,23 +8,34 @@ Expects:
     dataset/raw/jollof_rice/img1.jpg, img2.jpg, ...
     dataset/raw/egusi_soup/img1.jpg, ...
     (one folder per food class, named exactly as you want the class to appear)
-
-If you'd rather use the `splitfolders` package (common in the Nigerian food
-papers), you can swap this for:
-    import splitfolders
-    splitfolders.ratio(RAW_DATA_DIR, output=SPLIT_DATA_DIR, ratio=(.7, .15, .15), seed=SEED)
-This script does the same thing with zero extra dependencies.
 """
 
 import random
 import shutil
 
+from PIL import Image
+
 from . import config
+
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
 
 
 def _list_images(class_dir):
-    exts = {".jpg", ".jpeg", ".png"}
-    return [p for p in class_dir.iterdir() if p.suffix.lower() in exts]
+    return [p for p in class_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS]
+
+
+def _copy_or_convert(src_path, dest_dir):
+    """Copies jpg/png as-is. Converts anything else (webp, bmp, gif, etc.)
+    to .jpg so every downstream tool only ever has to deal with jpg/png."""
+    if src_path.suffix.lower() in {".jpg", ".jpeg", ".png"}:
+        shutil.copy2(src_path, dest_dir / src_path.name)
+    else:
+        try:
+            img = Image.open(src_path).convert("RGB")
+            new_name = src_path.stem + ".jpg"
+            img.save(dest_dir / new_name, "JPEG", quality=95)
+        except Exception as exc:
+            print(f"  WARNING: couldn't convert {src_path.name} ({exc}) — skipping")
 
 
 def split_dataset():
@@ -65,7 +76,7 @@ def split_dataset():
             out_dir = config.SPLIT_DATA_DIR / split_name / class_dir.name
             out_dir.mkdir(parents=True, exist_ok=True)
             for img_path in split_images:
-                shutil.copy2(img_path, out_dir / img_path.name)
+                _copy_or_convert(img_path, out_dir)
 
         summary[class_dir.name] = {k: len(v) for k, v in splits.items()}
 

@@ -1,7 +1,7 @@
 import { requireAuth, getUser } from './auth.js';
 import { renderNav } from './nav.js';
 import { countUp, vitalsStatus, statusDot, formatTime, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart } from './utils.js';
-import { api } from './api.js';
+import { api, resolveApiUrl } from './api.js';
 
 applyStoredTheme();
 requireAuth();
@@ -30,7 +30,7 @@ function adaptMeal(m) {
   return {
     id:            m.id,
     timestamp:     m.logged_at,
-    imageUrl:      m.image_url || null,
+    imageUrl:      resolveApiUrl(m.image_url) || null,
     totalCalories: m.total_calories,
     detectedFoods: (m.items || []).map(i => ({
       name:        i.food_name,

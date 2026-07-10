@@ -2,7 +2,7 @@ import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { formatDate, toast, initLucide, applyStoredTheme, initThemeToggle } from './utils.js';
 import { NIGERIAN_FOODS } from './mock.js';
-import { api } from './api.js';
+import { api, resolveApiUrl } from './api.js';
 
 applyStoredTheme();
 requireAuth();
@@ -36,28 +36,37 @@ document.getElementById('clear-btn').addEventListener('click', () => {
   selectedFile = null; fileInput.value = ''; previewWrap.classList.add('hidden'); result.classList.add('hidden');
 });
 
-// AI model not ready yet — using demo detection
+function formatFoodName(name) {
+  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 document.getElementById('analyze-btn').addEventListener('click', async () => {
   if (!selectedFile) return;
   const multiplier = Math.max(0.25, parseFloat(document.getElementById('portion-size').value) || 1);
   overlay.classList.remove('hidden');
-  await new Promise(r => setTimeout(r, 1200));
-  lastDetection = {
-    detectedFoods: [
-      { name: 'Jollof Rice',      portionSize: '1 cup',  calories: 340, carbs: 65, protein: 8,  fat: 6 },
-      { name: 'Grilled Chicken',  portionSize: '120g',   calories: 195, carbs: 0,  protein: 32, fat: 7 },
-    ].map(f => ({
-      ...f,
-      calories: Math.round(f.calories * multiplier),
-      carbs:    Math.round(f.carbs    * multiplier),
-      protein:  Math.round(f.protein  * multiplier),
-      fat:      Math.round(f.fat      * multiplier),
-      portionSize: multiplier === 1 ? f.portionSize : `${multiplier}× ${f.portionSize}`,
-    })),
-    confidence: 0.87,
-  };
-  overlay.classList.add('hidden');
-  renderResult(lastDetection);
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    const r = await api.postForm('/food/analyze', formData);
+    lastDetection = {
+      multiplier,
+      confidence: r.confidence,
+      lowConfidence: r.low_confidence,
+      detectedFoods: [{
+        name: formatFoodName(r.food_name),
+        portionSize: multiplier === 1 ? r.serving_description : `${multiplier}× ${r.serving_description}`,
+        calories: Math.round(r.calories * multiplier),
+        carbs:    Math.round(r.carbs_g  * multiplier),
+        protein:  Math.round(r.protein_g * multiplier),
+        fat:      Math.round(r.fat_g    * multiplier),
+      }],
+    };
+    renderResult(lastDetection);
+  } catch (err) {
+    toast('Could not analyze photo: ' + err.message, 'error');
+  } finally {
+    overlay.classList.add('hidden');
+  }
 });
 
 function renderResult(d) {
@@ -68,7 +77,7 @@ function renderResult(d) {
     <div class="card">
       <div class="row between mb-1">
         <div class="card-title">Recognized</div>
-        <span class="badge badge-success">Confidence ${Math.round(d.confidence * 100)}%</span>
+        <span class="badge ${d.lowConfidence ? 'badge-warning' : 'badge-success'}">Confidence ${Math.round(d.confidence * 100)}%</span>
       </div>
       <div class="list">
         ${d.detectedFoods.map(f => `
@@ -97,15 +106,14 @@ function renderResult(d) {
   initLucide();
 
   document.getElementById('confirm-btn').addEventListener('click', async () => {
-    const now = new Date().toISOString().slice(0, 19);
     const hour = new Date().getHours();
     const mealType = hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 19 ? 'dinner' : 'snack';
     try {
-      await api.post('/meals/', {
-        meal_type: mealType,
-        logged_at: now,
-        items: d.detectedFoods.map(f => ({ food_name: f.name, portion_size: f.portionSize, calories: f.calories, carbs: f.carbs, protein: f.protein, fat: f.fat })),
-      });
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('meal_type', mealType);
+      formData.append('portion_multiplier', String(d.multiplier));
+      await api.postForm('/food/log', formData);
       await loadMeals();
       toast('Meal added to your log');
       document.getElementById('clear-btn').click();
@@ -130,7 +138,7 @@ async function loadMeals() {
     meals = raw.map(m => ({
       id:            m.id,
       timestamp:     m.logged_at,
-      imageUrl:      m.image_url || null,
+      imageUrl:      resolveApiUrl(m.image_url) || null,
       totalCalories: m.total_calories,
       detectedFoods: (m.items || []).map(i => ({ name: i.food_name, portionSize: i.portion_size, calories: i.calories, carbs: i.carbs, protein: i.protein, fat: i.fat })),
     }));
