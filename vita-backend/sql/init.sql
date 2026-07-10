@@ -139,4 +139,6 @@ ORDER BY table_name;
 
 
 use vita_db;
-SELECT * FROM users;
+DELETE FROM meals WHERE image_url IS NULL;
+
+SELECT * FROM users
