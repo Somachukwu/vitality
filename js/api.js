@@ -1,4 +1,9 @@
-const BASE_URL = 'http://127.0.0.1:8000/api';
+const API_ORIGIN = 'http://127.0.0.1:8000';
+const BASE_URL = `${API_ORIGIN}/api`;
+
+export function resolveApiUrl(path) {
+  return path && path.startsWith('/') ? `${API_ORIGIN}${path}` : path;
+}
 
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('token');
@@ -25,12 +30,19 @@ export const api = {
   put:    (url, body) => request(url, { method: 'PUT',   body: JSON.stringify(body) }),
   patch:  (url, body) => request(url, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
   delete: (url)       => request(url, { method: 'DELETE' }),
-  postForm: (url, formData) =>
-    fetch(`${BASE_URL}${url}`, {
+  postForm: async (url, formData) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${BASE_URL}${url}`, {
       method: 'POST',
       body: formData,
-      headers: localStorage.getItem('token')
-        ? { Authorization: `Bearer ${localStorage.getItem('token')}` }
-        : {},
-    }).then((r) => r.json()),
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (res.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = 'login.html';
+      return;
+    }
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
 };
