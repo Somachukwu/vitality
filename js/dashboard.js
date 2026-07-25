@@ -1,6 +1,6 @@
 import { requireAuth, getUser, saveUser } from './auth.js';
 import { renderNav } from './nav.js';
-import { countUp, vitalsStatus, statusDot, formatTime, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart } from './utils.js';
+import { countUp, vitalsStatus, statusDot, formatTime, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart, computeBmi, bmiStatus } from './utils.js';
 import { api, resolveApiUrl } from './api.js';
 
 applyStoredTheme();
@@ -54,6 +54,20 @@ function renderVitals(v) {
   document.getElementById('s-spo2').innerHTML = statusDot(vitalsStatus('spo2',        v.spo2));
   document.getElementById('s-temp').innerHTML = statusDot(vitalsStatus('temperature', v.temperature));
   document.getElementById('last-sync').textContent = 'Last synced ' + formatTime(v.timestamp);
+}
+
+function renderBmi(weightKg, heightCm) {
+  const bmiEl = document.getElementById('v-bmi');
+  const statusEl = document.getElementById('s-bmi');
+  const bmi = computeBmi(weightKg, heightCm);
+  if (bmi == null) {
+    bmiEl.textContent = '—';
+    statusEl.innerHTML = `<span class="text-xs muted">${heightCm ? 'No weight reading yet' : 'Add your height in Profile'}</span>`;
+    return;
+  }
+  countUp(bmiEl, bmi, { decimals: 1 });
+  const { status, label } = bmiStatus(bmi);
+  statusEl.innerHTML = statusDot(status, label);
 }
 
 function renderRec(rec) {
@@ -125,12 +139,17 @@ async function loadAll() {
   } catch { /* fall back to cached/default goal */ }
 
   // Vitals
+  let latestWeight = null;
   try {
     const v = await api.get('/vitals/latest');
     renderVitals(adaptVitals(v));
+    latestWeight = v.weight;
   } catch {
     document.getElementById('last-sync').textContent = 'No device data yet';
   }
+
+  // BMI — last reading from the smart scale, falling back to the manually-entered profile weight
+  renderBmi(latestWeight ?? user.weight, user.height);
 
   // Recommendations
   try {
@@ -186,5 +205,6 @@ setInterval(async () => {
   try {
     const v = await api.get('/vitals/latest');
     renderVitals(adaptVitals(v));
+    renderBmi(v.weight ?? user.weight, user.height);
   } catch { /* ignore */ }
 }, 30000);

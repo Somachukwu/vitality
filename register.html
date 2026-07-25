@@ -66,7 +66,7 @@
       btn.disabled = true; btn.textContent = 'Creating account…';
       try {
         await registerApi(f('name'), email, pw, f('age'), f('sex'), f('goal'));
-        window.location.href = 'dashboard.html';
+        window.location.href = 'onboarding.html';
       } catch (err) {
         toast(err.message || 'Registration failed. Try a different email.', 'error');
         btn.disabled = false; btn.textContent = 'Create account';

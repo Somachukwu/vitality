@@ -42,14 +42,14 @@
               <div><label>Daily calorie target</label><input id="cal" type="number" min="1200" max="4000" disabled /></div>
               <div><label>Goal</label>
                 <select id="goal" disabled>
-                  <option value="general_wellness">General wellness</option>
-                  <option value="lose_weight">Lose weight</option>
-                  <option value="maintain">Maintain weight</option>
-                  <option value="gain_weight">Gain weight</option>
+                  <option value="maintenance">General wellness / Maintain</option>
+                  <option value="weight_loss">Lose weight</option>
+                  <option value="weight_gain">Gain weight</option>
                 </select>
               </div>
             </div>
             <div><label>Dietary restrictions</label><input id="diet" placeholder="comma-separated" disabled /></div>
+            <div><label>Existing health conditions</label><input id="health" placeholder="e.g. diabetes, hypertension (comma-separated)" disabled /></div>
             <div class="row gap-sm hidden" id="form-actions">
               <button class="btn btn-primary" type="submit">Save changes</button>
               <button class="btn btn-ghost" type="button" id="cancel-btn">Cancel</button>
