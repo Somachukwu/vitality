@@ -32,22 +32,43 @@
           <label for="diet">Dietary restrictions (comma-separated, optional)</label>
           <input id="diet" placeholder="e.g. lactose, gluten" />
         </div>
+        <div>
+          <label for="health">Existing health conditions (comma-separated, optional)</label>
+          <input id="health" placeholder="e.g. diabetes, hypertension" />
+        </div>
         <button class="btn btn-primary btn-block" type="submit">Continue to dashboard</button>
       </form>
     </div>
   </main>
   <script type="module">
     import { getUser, saveUser, requireAuth } from './js/auth.js';
+    import { api } from './js/api.js';
+    import { toast } from './js/utils.js';
     requireAuth();
-    document.getElementById('onb-form').addEventListener('submit', (e) => {
+
+    const form = document.getElementById('onb-form');
+    const btn = form.querySelector('button[type="submit"]');
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const u = getUser();
-      u.heightCm = Number(document.getElementById('height').value);
-      u.weightKg = Number(document.getElementById('weight').value);
-      u.dailyCalorieTarget = Number(document.getElementById('cal').value);
-      u.dietaryRestrictions = document.getElementById('diet').value.split(',').map(s => s.trim()).filter(Boolean);
-      saveUser(u);
-      window.location.href = 'dashboard.html';
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      try {
+        const payload = {
+          height:               Number(document.getElementById('height').value),
+          weight:                Number(document.getElementById('weight').value),
+          daily_calorie_target: Number(document.getElementById('cal').value),
+          dietary_restrictions: document.getElementById('diet').value.split(',').map(s => s.trim()).filter(Boolean),
+          health_conditions:    document.getElementById('health').value.split(',').map(s => s.trim()).filter(Boolean),
+        };
+        const profile = await api.put('/users/profile', payload);
+        saveUser({ ...getUser(), ...profile });
+        window.location.href = 'dashboard.html';
+      } catch (err) {
+        toast('Could not save: ' + err.message, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Continue to dashboard';
+      }
     });
   </script>
 </body>

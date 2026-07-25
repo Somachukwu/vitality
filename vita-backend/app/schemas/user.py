@@ -34,6 +34,7 @@ class ProfileUpdate(BaseModel):
     daily_calorie_target: int | None = None
     goal_type: Literal["weight_loss", "weight_gain", "maintenance"] | None = None
     dietary_restrictions: list[str] | None = None
+    health_conditions: list[str] | None = None
     notification_preferences: dict | None = None
 
 
@@ -48,6 +49,7 @@ class UserOut(BaseModel):
     daily_calorie_target: int | None
     goal_type: str | None
     dietary_restrictions: list | None
+    health_conditions: list | None
     notification_preferences: dict | None
     created_at: datetime
 

@@ -22,6 +22,7 @@ class User(Base):
         Enum("weight_loss", "weight_gain", "maintenance"), nullable=True
     )
     dietary_restrictions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    health_conditions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     notification_preferences: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

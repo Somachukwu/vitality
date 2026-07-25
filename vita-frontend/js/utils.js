@@ -29,9 +29,23 @@ export function vitalsStatus(metric, value) {
   }
 }
 
-export function statusDot(status) {
-  const label = { green: 'Normal', amber: 'Borderline', red: 'Out of range', unknown: '—' }[status] || '';
+export function statusDot(status, customLabel) {
+  const label = customLabel ?? ({ green: 'Normal', amber: 'Borderline', red: 'Out of range', unknown: '—' }[status] || '');
   return `<span class="dot dot-${status}"></span><span class="text-xs muted">${label}</span>`;
+}
+
+export function computeBmi(weightKg, heightCm) {
+  if (!weightKg || !heightCm) return null;
+  const heightM = heightCm / 100;
+  return weightKg / (heightM * heightM);
+}
+
+export function bmiStatus(bmi) {
+  if (bmi == null || Number.isNaN(bmi)) return { status: 'unknown', label: '—' };
+  if (bmi < 18.5) return { status: 'amber', label: 'Underweight' };
+  if (bmi < 25)   return { status: 'green', label: 'Normal' };
+  if (bmi < 30)   return { status: 'amber', label: 'Overweight' };
+  return { status: 'red', label: 'Obese' };
 }
 
 export function formatDate(ts) {

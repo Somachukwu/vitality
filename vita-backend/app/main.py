@@ -25,6 +25,15 @@ def _run_migrations():
                 ))
                 conn.commit()
 
+        # Add health_conditions column if this is an existing database
+        if "users" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("users")}
+            if "health_conditions" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN health_conditions JSON NULL"
+                ))
+                conn.commit()
+
 
 # Create any new tables, then patch existing ones
 Base.metadata.create_all(bind=engine)

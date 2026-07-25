@@ -32,6 +32,7 @@ async function loadProfile() {
     set('cal',       profile.daily_calorie_target);
     set('goal',      profile.goal_type);
     set('diet',      (profile.dietary_restrictions || []).join(', '));
+    set('health',    (profile.health_conditions || []).join(', '));
     const notifPref = profile.notification_preferences || {};
     const pushEl  = document.getElementById('notif-push');
     const emailEl = document.getElementById('notif-email');
@@ -79,6 +80,7 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
       daily_calorie_target:    Number(get('cal')) || undefined,
       goal_type:               get('goal') || undefined,
       dietary_restrictions:    get('diet').split(',').map(s => s.trim()).filter(Boolean),
+      health_conditions:       get('health').split(',').map(s => s.trim()).filter(Boolean),
       notification_preferences: {
         push:  document.getElementById('notif-push')?.checked  ?? true,
         email: document.getElementById('notif-email')?.checked ?? false,

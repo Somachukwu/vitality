@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
     daily_calorie_target    INT UNSIGNED,
     goal_type               ENUM('weight_loss','weight_gain','maintenance'),
     dietary_restrictions    JSON,
+    health_conditions       JSON,
     notification_preferences JSON,
     created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
