@@ -1,4 +1,4 @@
-const API_ORIGIN = 'http://127.0.0.1:8000';
+const API_ORIGIN = 'http://localhost:8000';
 const BASE_URL = `${API_ORIGIN}/api`;
 
 export function resolveApiUrl(path) {
@@ -8,6 +8,7 @@ export function resolveApiUrl(path) {
 async function request(endpoint, options = {}) {
   const token = localStorage.getItem('token');
   const res = await fetch(`${BASE_URL}${endpoint}`, {
+    credentials: 'include',  // Allow sending and receiving cookies cross-origin
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -35,6 +36,7 @@ export const api = {
     const res = await fetch(`${BASE_URL}${url}`, {
       method: 'POST',
       body: formData,
+      credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (res.status === 401) {

@@ -241,3 +241,112 @@ document.getElementById('devices-list').addEventListener('click', async (e) => {
 
 document.getElementById('change-pw').addEventListener('click', () => toast('Password reset coming soon.'));
 document.getElementById('logout-btn').addEventListener('click', logout);
+
+// ── Google Health integration ─────────────────────────────────────────────────
+
+const API_BASE = 'http://localhost:8000/api';
+
+/** Render the Google Health row based on the status response */
+function renderGoogleStatus(status) {
+  const sub     = document.getElementById('google-health-sub');
+  const actions = document.getElementById('google-health-actions');
+
+  if (status.connected) {
+    const lastSync = status.last_synced_at
+      ? 'Last sync: ' + new Date(status.last_synced_at + 'Z').toLocaleString()
+      : 'Never synced';
+    sub.textContent = (status.google_email || 'Connected') + ' · ' + lastSync;
+
+    actions.innerHTML = `
+      <span class="badge badge-success">&#9679; Connected</span>
+      <button class="btn btn-ghost text-xs" id="sync-google-btn" type="button">
+        <i data-lucide="refresh-cw"></i> Sync now
+      </button>
+      <button class="btn btn-ghost text-xs" id="disconnect-google-btn" type="button" style="color:#b91c1c">
+        Disconnect
+      </button>
+    `;
+    initLucide();
+
+    document.getElementById('sync-google-btn').addEventListener('click', syncGoogleHealth);
+    document.getElementById('disconnect-google-btn').addEventListener('click', disconnectGoogleHealth);
+  } else {
+    sub.textContent = 'Not connected';
+    actions.innerHTML = `
+      <button class="btn btn-primary text-xs" id="connect-google-btn" type="button">
+        <i data-lucide="link"></i> Connect Google Health
+      </button>
+    `;
+    initLucide();
+    document.getElementById('connect-google-btn').addEventListener('click', connectGoogleHealth);
+  }
+}
+
+/** Load connection status from the backend */
+async function loadGoogleHealthStatus() {
+  try {
+    const status = await api.get('/auth/google/status');
+    renderGoogleStatus(status);
+  } catch {
+    renderGoogleStatus({ connected: false });
+  }
+}
+
+/** Step 1 — call /intent to get a connection token, then redirect to OAuth initiation */
+async function connectGoogleHealth() {
+  const btn = document.getElementById('connect-google-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  try {
+    const { connect_token } = await api.post('/auth/google/intent', {});
+    // Full browser navigation — backend will redirect to Google consent screen
+    window.location.href = `${API_BASE}/auth/google?connect_token=${encodeURIComponent(connect_token)}`;
+  } catch (err) {
+    toast('Could not start Google Health connection: ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Connect Google Health'; }
+  }
+}
+
+/** Sync Google Fit data on demand */
+async function syncGoogleHealth() {
+  const btn = document.getElementById('sync-google-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  try {
+    const result = await api.post('/auth/google/sync', {});
+    toast(`Synced ${result.synced_count} data points + ${result.sleep_sessions_synced} sleep session(s).`);
+    await loadGoogleHealthStatus();   // refresh last_synced_at display
+  } catch (err) {
+    toast('Sync failed: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="refresh-cw"></i> Sync now'; initLucide(); }
+  }
+}
+
+/** Disconnect Google Health */
+async function disconnectGoogleHealth() {
+  if (!confirm('Disconnect Google Health? Your previously synced data will be kept, but no new data will be pulled.')) return;
+  const btn = document.getElementById('disconnect-google-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Disconnecting…'; }
+  try {
+    await api.delete('/auth/google/disconnect');
+    toast('Google Health disconnected.');
+    await loadGoogleHealthStatus();
+  } catch (err) {
+    toast('Could not disconnect: ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Disconnect'; }
+  }
+}
+
+// Detect successful OAuth callback redirect (?google_connected=1)
+// and show a toast, then clean the URL so it doesn't repeat on refresh
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('google_connected') === '1') {
+  toast('Google Health connected successfully!');
+  history.replaceState({}, '', window.location.pathname);
+}
+if (urlParams.get('google_error') === '1') {
+  toast('Google Health connection failed. Please try again.', 'error');
+  history.replaceState({}, '', window.location.pathname);
+}
+
+// Load Google Health status alongside profile and devices
+loadGoogleHealthStatus();

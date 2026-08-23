@@ -104,6 +104,24 @@
         </section>
 
         <section class="card">
+          <div class="card-title">Connected services</div>
+
+          <!-- Google Health row — state rendered by profile.js loadGoogleHealthStatus() -->
+          <div class="list">
+            <div class="list-item" id="google-health-row">
+              <i data-lucide="activity"></i>
+              <div style="flex:1; min-width:0">
+                <strong>Google Health</strong>
+                <div class="text-xs muted" id="google-health-sub">Loading…</div>
+              </div>
+              <div class="row gap-sm flex-wrap" style="justify-content:flex-end; align-items:center" id="google-health-actions">
+                <!-- Populated by profile.js -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
           <div class="card-title">Account</div>
           <div class="row gap-sm flex-wrap">
             <button class="btn btn-ghost" id="change-pw"><i data-lucide="key"></i> Change password</button>
