@@ -3,19 +3,20 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import inspect, text
 
 from app.config import settings
 from app.database import Base, engine
-from app.models import Device, Meal, MealItem, Recommendation, User, Vitals  # noqa: F401 — ensures all tables are registered
-from app.routers import auth, devices, food_recognition, meals, recommendations, users, vitals
+from app.models import Device, GoogleHealthToken, Meal, MealItem, Recommendation, SleepSession, User, Vitals  # noqa: F401 — ensures all tables are registered
+from app.routers import auth, devices, food_recognition, meals, recommendations, users, vitals, google_health
 
 
 def _run_migrations():
     """Apply schema changes to existing tables that create_all() cannot handle."""
     inspector = inspect(engine)
     with engine.connect() as conn:
-        # Add device_type column if this is an existing database
+        # ── devices table ───────────────────────────────────────────────────────
         if "devices" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("devices")}
             if "device_type" not in cols:
@@ -25,7 +26,7 @@ def _run_migrations():
                 ))
                 conn.commit()
 
-        # Add health_conditions column if this is an existing database
+        # ── users table ─────────────────────────────────────────────────────────
         if "users" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("users")}
             if "health_conditions" not in cols:
@@ -33,6 +34,28 @@ def _run_migrations():
                     "ALTER TABLE users ADD COLUMN health_conditions JSON NULL"
                 ))
                 conn.commit()
+            # Make password_hash nullable to support future Google-only accounts
+            if "password_hash" in cols:
+                conn.execute(text(
+                    "ALTER TABLE users MODIFY COLUMN password_hash VARCHAR(255) NULL"
+                ))
+                conn.commit()
+
+        # ── vitals table ─────────────────────────────────────────────────────────
+        if "vitals" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("vitals")}
+            new_vitals_cols = {
+                "calories_burned": "FLOAT NULL COMMENT 'kcal — from Google Fit'",
+                "distance_km":     "FLOAT NULL COMMENT 'km — from Google Fit'",
+                "floors":          "INT NULL COMMENT 'floors climbed — from Google Fit'",
+                "active_minutes":  "INT NULL COMMENT 'active zone minutes — from Google Fit'",
+                "body_fat_pct":    "FLOAT NULL COMMENT '% — from smart scale'",
+                "source":          "VARCHAR(50) NULL COMMENT 'google_fit | station | NULL'",
+            }
+            for col_name, col_def in new_vitals_cols.items():
+                if col_name not in cols:
+                    conn.execute(text(f"ALTER TABLE vitals ADD COLUMN {col_name} {col_def}"))
+                    conn.commit()
 
 
 # Create any new tables, then patch existing ones
@@ -45,12 +68,20 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET_KEY,   # separate from JWT_SECRET_KEY
+    same_site="lax",
+    https_only=False,   # set True in production
+)
+
+# In development allow all origins; in production use explicit CORS_ORIGINS list
 _cors_origins = ["*"] if settings.APP_ENV == "development" else settings.cors_origins_list
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=False,
+    allow_credentials=True,    # required for session cookies during OAuth redirect
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -62,6 +93,7 @@ app.include_router(vitals.router, prefix="/api")
 app.include_router(meals.router, prefix="/api")
 app.include_router(food_recognition.router, prefix="/api")
 app.include_router(recommendations.router, prefix="/api")
+app.include_router(google_health.router, prefix="/api")
 
 # Serve uploaded meal images as static files at /uploads/meals/<filename>
 _uploads_dir = Path(__file__).parent.parent / "uploads"

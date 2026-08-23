@@ -22,6 +22,12 @@ class VitalsOut(BaseModel):
     humidity: float | None
     weight: float | None
     steps: int | None
+    calories_burned: float | None = None
+    distance_km: float | None = None
+    floors: int | None = None
+    active_minutes: int | None = None
+    body_fat_pct: float | None = None
+    source: str | None = None
     recorded_at: datetime
 
     model_config = {"from_attributes": True}

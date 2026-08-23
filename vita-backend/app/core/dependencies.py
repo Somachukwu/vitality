@@ -9,7 +9,7 @@ from app.models.user import User
 
 
 def get_current_user(
-    authorization: str = Header(...),
+    authorization: str | None = Header(None),   # None → 401 instead of 422
     db: Session = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
@@ -17,7 +17,7 @@ def get_current_user(
         detail="Invalid or expired token",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if not authorization.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise credentials_exception
     token = authorization.removeprefix("Bearer ").strip()
     try:

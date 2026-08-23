@@ -12,7 +12,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)  # nullable: Google-only users have no password
     age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sex: Mapped[str | None] = mapped_column(Enum("male", "female", "other"), nullable=True)
     height: Mapped[float | None] = mapped_column(Float, nullable=True)        # cm
@@ -33,3 +33,5 @@ class User(Base):
     meals: Mapped[list["Meal"]] = relationship(back_populates="user")  # noqa: F821
     recommendations: Mapped[list["Recommendation"]] = relationship(back_populates="user")  # noqa: F821
     devices: Mapped[list["Device"]] = relationship(back_populates="user")  # noqa: F821
+    google_health_token: Mapped["GoogleHealthToken | None"] = relationship(back_populates="user", uselist=False)  # noqa: F821
+    sleep_sessions: Mapped[list["SleepSession"]] = relationship(back_populates="user")  # noqa: F821

@@ -17,6 +17,16 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_REDIRECT_URI: str
+
+    # Fernet key for encrypting OAuth tokens at rest (generate with: Fernet.generate_key())
+    FERNET_SECRET_KEY: str
+
+    # Separate secret for session middleware — must NOT be the same as JWT_SECRET_KEY
+    SESSION_SECRET_KEY: str
+
     @property
     def database_url(self) -> str:
         password = quote_plus(self.DB_PASSWORD)

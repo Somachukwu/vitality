@@ -16,13 +16,14 @@ let macrosChart = null;
 // Map snake_case API response to camelCase expected by render functions
 function adaptVitals(v) {
   return {
-    heartRate:   v.heart_rate,
-    spo2:        v.spo2,
-    temperature: v.temperature,
-    humidity:    v.humidity,
-    weight:      v.weight,
-    steps:       v.steps,
-    timestamp:   v.recorded_at,
+    heartRate:      v.heart_rate,
+    spo2:           v.spo2,
+    temperature:    v.temperature,
+    caloriesBurned: v.calories_burned,
+    weight:         v.weight,
+    steps:          v.steps,
+    distanceKm:     v.distance_km,
+    timestamp:      v.recorded_at,
   };
 }
 
@@ -44,12 +45,24 @@ function adaptMeal(m) {
 }
 
 function renderVitals(v) {
-  countUp(document.getElementById('v-hr'),   v.heartRate,   { decimals: 0 });
-  countUp(document.getElementById('v-spo2'), v.spo2,        { decimals: 1 });
-  countUp(document.getElementById('v-temp'), v.temperature, { decimals: 1 });
-  countUp(document.getElementById('v-hum'),  v.humidity,    { decimals: 0 });
-  countUp(document.getElementById('v-wt'),   v.weight,      { decimals: 1 });
-  countUp(document.getElementById('v-steps'),v.steps,       { decimals: 0 });
+  const safeCountUp = (id, val, dec = 0) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (val == null || Number.isNaN(val)) {
+      el.textContent = '—';
+    } else {
+      countUp(el, val, { decimals: dec });
+    }
+  };
+
+  safeCountUp('v-hr',         v.heartRate, 0);
+  safeCountUp('v-spo2',       v.spo2, 1);
+  safeCountUp('v-temp',       v.temperature, 1);
+  safeCountUp('v-cal-burned', v.caloriesBurned, 0);
+  safeCountUp('v-steps',      v.steps, 0);
+  safeCountUp('v-dist',       v.distanceKm, 1);
+  safeCountUp('v-wt',         v.weight, 1);
+
   document.getElementById('s-hr').innerHTML   = statusDot(vitalsStatus('heartRate',   v.heartRate));
   document.getElementById('s-spo2').innerHTML = statusDot(vitalsStatus('spo2',        v.spo2));
   document.getElementById('s-temp').innerHTML = statusDot(vitalsStatus('temperature', v.temperature));

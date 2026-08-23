@@ -63,19 +63,40 @@ def get_latest_vitals(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    record = (
+    recent_records = (
         db.query(Vitals)
         .filter(Vitals.user_id == current_user.id)
         .order_by(Vitals.recorded_at.desc())
-        .first()
+        .limit(20)
+        .all()
     )
-    if record is None:
+    if not recent_records:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="No vitals recorded yet")
 
-    out = VitalsLatestOut.model_validate(record)
-    if record.device:
-        out.device_name = record.device.device_name
+    latest = recent_records[0]
+    out = VitalsLatestOut.model_validate(latest)
+    if latest.device:
+        out.device_name = latest.device.device_name
+
+    # Coalesce any missing fields from the recent history
+    fields_to_check = [
+        "heart_rate", "spo2", "temperature", "humidity", "weight",
+        "steps", "calories_burned", "distance_km", "floors",
+        "active_minutes", "body_fat_pct"
+    ]
+    for field in fields_to_check:
+        if getattr(out, field, None) is None:
+            for rec in recent_records[1:]:
+                val = getattr(rec, field, None)
+                if val is not None:
+                    setattr(out, field, val)
+                    break
+
+    # Fall back to profile weight if not present in vitals table
+    if out.weight is None and current_user.weight is not None:
+        out.weight = current_user.weight
+
     return out
 
 

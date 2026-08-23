@@ -12,5 +12,8 @@ pydantic==2.10.3
 email-validator==2.3.0
 pydantic-settings==2.6.1
 aiofiles==23.2.1
+google-auth-oauthlib>=1.2.1
+google-auth>=2.35.0
+requests>=2.32.3
 # Food recognition (install separately — large download):
 #   pip install tensorflow==2.17.0 numpy pillow
