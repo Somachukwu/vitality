@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -35,3 +35,27 @@ class VitalsOut(BaseModel):
 
 class VitalsLatestOut(VitalsOut):
     device_name: str | None = None
+
+
+class VitalsDailySummary(BaseModel):
+    """One row per calendar date — used by the history endpoint."""
+    date: date
+    # Point-in-time vitals (latest reading on that date)
+    heart_rate: float | None = None
+    spo2: float | None = None
+    temperature: float | None = None
+    weight: float | None = None
+    # Daily aggregates (summed / maxed across all sources on that date)
+    steps: int | None = None
+    calories_burned: float | None = None
+    distance_km: float | None = None
+    active_minutes: int | None = None
+
+
+class SyncAllOut(BaseModel):
+    """Response from POST /vitals/sync-all."""
+    google_synced: bool = False
+    synced_count: int = 0
+    sleep_sessions_synced: int = 0
+    # The latest vitals are embedded so the frontend doesn't need a second request
+    vitals: VitalsLatestOut | None = None
