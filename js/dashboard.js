@@ -200,8 +200,19 @@ async function syncNow(btn) {
   btn.disabled = true;
   label.textContent = 'Syncing…';
   try {
+    // Trigger Google Health sync + get fresh vitals in one call
+    const result = await api.post('/vitals/sync-all', {});
+    if (result.vitals) {
+      renderVitals(adaptVitals(result.vitals));
+      renderBmi(result.vitals.weight ?? user.weight, user.height);
+    }
+    // Also refresh meals, recommendations, profile
     await loadAll();
-    toast('Device readings refreshed');
+    if (result.google_synced) {
+      toast(`Synced ${result.synced_count} data point(s) from Google Health`);
+    } else {
+      toast('Device readings refreshed');
+    }
   } catch {
     toast('Sync failed — check connection', 'error');
   } finally {
