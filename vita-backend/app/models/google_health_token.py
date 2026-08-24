@@ -1,7 +1,6 @@
-﻿from datetime import datetime
+from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, func
-from sqlalchemy.dialects.mysql import INTEGER as MUINT
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -10,8 +9,8 @@ from app.database import Base
 class GoogleHealthToken(Base):
     __tablename__ = 'google_health_tokens'
 
-    id = mapped_column(MUINT(unsigned=True), primary_key=True, autoincrement=True)
-    user_id = mapped_column(MUINT(unsigned=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    id = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id = mapped_column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
     google_email = mapped_column(String(255), nullable=True)
     access_token = mapped_column(Text, nullable=False)
     refresh_token = mapped_column(Text, nullable=True)

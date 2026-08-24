@@ -143,3 +143,8 @@ use vita_db;
 DELETE FROM meals WHERE image_url IS NULL;
 
 SELECT * FROM users
+
+SHOW CREATE TABLE users;
+SHOW TABLES;
+SHOW CREATE TABLE google_health_tokens;
+SELECT DATABASE();

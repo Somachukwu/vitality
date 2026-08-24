@@ -1,7 +1,6 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.mysql import INTEGER as MUINT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -10,8 +9,8 @@ from app.database import Base
 class SleepSession(Base):
     __tablename__ = 'sleep_sessions'
 
-    id = mapped_column(MUINT(unsigned=True), primary_key=True, autoincrement=True)
-    user_id = mapped_column(MUINT(unsigned=True), ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    id = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id = mapped_column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     sleep_date = mapped_column(Date, nullable=False, index=True)
     sleep_start = mapped_column(DateTime, nullable=True)
     sleep_end = mapped_column(DateTime, nullable=True)
