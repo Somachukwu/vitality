@@ -1,6 +1,6 @@
 import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
-import { formatDate, toast, initLucide, applyStoredTheme, initThemeToggle } from './utils.js';
+import { formatDate, toast, initLucide, applyStoredTheme, initThemeToggle, compressImage } from './utils.js';
 import { NIGERIAN_FOODS } from './mock.js';
 import { api, resolveApiUrl } from './api.js';
 
@@ -23,11 +23,18 @@ let lastDetection = null;
 dropzone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); });
 fileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
 
-function handleFile(f) {
-  if (!/^image\/(jpeg|png)$/.test(f.type)) return toast('Please choose a JPEG or PNG image.', 'error');
-  if (f.size > 10 * 1024 * 1024) return toast('Image must be 10 MB or less.', 'error');
-  selectedFile = f;
-  preview.src = URL.createObjectURL(f);
+async function handleFile(f) {
+  if (!f || !f.type.startsWith('image/')) {
+    return toast('Please select an image file.', 'error');
+  }
+  let fileToUse = f;
+  try {
+    fileToUse = await compressImage(f);
+  } catch (err) {
+    console.warn('Compression error, fallback to original:', err);
+  }
+  selectedFile = fileToUse;
+  preview.src = URL.createObjectURL(fileToUse);
   previewWrap.classList.remove('hidden');
   result.classList.add('hidden');
 }

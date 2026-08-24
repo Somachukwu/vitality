@@ -91,3 +91,50 @@ export function initThemeToggle(btnId = 'theme-btn') {
   const btn = document.getElementById(btnId);
   if (btn) btn.addEventListener('click', toggleTheme);
 }
+
+export async function compressImage(file, maxDimension = 1920, quality = 0.85) {
+  if (!file || !file.type.startsWith('image/')) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width <= maxDimension && height <= maxDimension && file.size <= 1.5 * 1024 * 1024) {
+        return resolve(file);
+      }
+      if (width > height) {
+        if (width > maxDimension) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) return resolve(file);
+          const name = (file.name || 'photo.jpg').replace(/\.[^/.]+$/, '') + '.jpg';
+          const compressedFile = new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() });
+          resolve(compressedFile);
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+

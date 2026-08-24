@@ -19,7 +19,7 @@ UPLOADS_DIR = Path(__file__).parent.parent.parent / "uploads" / "meals"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_IMAGE_BYTES = 25 * 1024 * 1024  # 25 MB
 VALID_MEAL_TYPES = {"breakfast", "lunch", "dinner", "snack"}
 
 
