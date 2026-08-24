@@ -75,12 +75,11 @@ app.add_middleware(
     https_only=False,   # set True in production
 )
 
-# In development allow all origins; in production use explicit CORS_ORIGINS list
-_cors_origins = ["*"] if settings.APP_ENV == "development" else settings.cors_origins_list
-
+# CORS — wildcard ("*") is NOT allowed when allow_credentials=True.
+# Always use explicit origins from the CORS_ORIGINS env var.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,    # required for session cookies during OAuth redirect
     allow_methods=["*"],
     allow_headers=["*"],

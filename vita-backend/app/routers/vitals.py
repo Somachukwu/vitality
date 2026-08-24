@@ -128,15 +128,16 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
     )
 
     for field in _DAILY_AGGREGATE_FIELDS:
+        best = None
         for rec in today_records:
             val = getattr(rec, field, None)
             # Treat 0 as "no data" for daily aggregates — prevents ESP32
             # pushing steps=0 from overriding real Google Fit step counts
             if val is not None and val > 0:
-                current = getattr(out, field, None)
-                if current is None or val > current:
-                    setattr(out, field, val)
-                break
+                if best is None or val > best:
+                    best = val
+        if best is not None:
+            setattr(out, field, best)
 
     return out
 

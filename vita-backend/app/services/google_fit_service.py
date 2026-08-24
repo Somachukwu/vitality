@@ -344,23 +344,29 @@ def sync_google_fit(user_id: int, db: Session, hours_back: int = 24) -> dict:
     end_dt   = datetime.now(timezone.utc)
     start_dt = end_dt - timedelta(hours=hours_back)
 
+    # TODAY's midnight (UTC) — used for daily aggregate metrics so that
+    # steps/calories/distance only contain TODAY's data, never yesterday's.
+    today_midnight = end_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
     synced_count = 0
     sleep_sessions_synced = 0
 
     # ── 1. Fetch from Google Health API v4 (PARALLEL — fast) ────────────
+    # Use today_midnight → now for daily aggregates (steps, cal, dist)
+    # so we never mix yesterday's steps into today.
     collected_metrics: dict[str, float | int] = {}
     try:
         health_metrics = asyncio.run(
-            _fetch_all_health_metrics(creds.token, start_dt, end_dt)
+            _fetch_all_health_metrics(creds.token, today_midnight, end_dt)
         )
         collected_metrics.update(health_metrics)
-        logger.info("Google Health API v4 returned %d metrics", len(health_metrics))
+        logger.info("Google Health API v4 returned %d metrics (today only)", len(health_metrics))
     except Exception as exc:
         logger.warning("Google Health API v4 parallel fetch failed: %s", exc)
 
     # ── 2. Fetch from Google Fit REST API (legacy fallback) ─────────────
-    # Only fill in metrics that Health API didn't provide
-    agg_data = _fetch_aggregate(creds, start_dt, end_dt)
+    # Also use today_midnight for aggregate query so daily totals are today-only
+    agg_data = _fetch_aggregate(creds, today_midnight, end_dt)
     if agg_data and "bucket" in agg_data:
         for bucket in agg_data.get("bucket", []):
             for dataset in bucket.get("dataset", []):
@@ -398,14 +404,14 @@ def sync_google_fit(user_id: int, db: Session, hours_back: int = 24) -> dict:
                     if val and "temperature" not in collected_metrics:
                         collected_metrics["temperature"] = round(val, 1)
 
-    # Merge in data from active device streams (only if not already present)
-    stream_metrics = _fetch_from_datasources(creds, start_dt, end_dt)
+    # Merge in data from active device streams (today only)
+    stream_metrics = _fetch_from_datasources(creds, today_midnight, end_dt)
     for k, v in stream_metrics.items():
         if k not in collected_metrics or (isinstance(v, (int, float)) and v > collected_metrics.get(k, 0)):
             collected_metrics[k] = v
 
     if collected_metrics:
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        today_start = today_midnight.replace(tzinfo=None)
         existing = db.query(Vitals).filter(
             Vitals.user_id == user_id,
             Vitals.source == "google_fit",
