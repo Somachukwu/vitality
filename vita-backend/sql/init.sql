@@ -149,3 +149,5 @@ SHOW TABLES;
 SHOW CREATE TABLE google_health_tokens;
 
 Select * from users;
+
+// Test Workflow again
