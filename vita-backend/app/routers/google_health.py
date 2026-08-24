@@ -62,8 +62,8 @@ GOOGLE_SCOPES = [
 ]
 
 # ── Frontend redirect after successful connection ──────────────────────────────
-_FRONTEND_SUCCESS_URL = "http://localhost:8080/profile.html?google_connected=1"
-_FRONTEND_ERROR_URL   = "http://localhost:8080/profile.html?google_error=1"
+_FRONTEND_SUCCESS_URL = "https://somachukwu.github.io/vitality/profile.html?google_connected=1"
+_FRONTEND_ERROR_URL   = "https://somachukwu.github.io/vitality/profile.html?google_error=1"
 
 
 def _build_flow(state: str | None = None) -> Flow:
