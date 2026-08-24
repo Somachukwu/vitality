@@ -147,4 +147,5 @@ SELECT * FROM users
 SHOW CREATE TABLE users;
 SHOW TABLES;
 SHOW CREATE TABLE google_health_tokens;
-SELECT DATABASE();
+
+Select * from users;
