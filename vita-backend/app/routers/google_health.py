@@ -1,4 +1,4 @@
-﻿"""
+"""
 Google Health OAuth router.
 
 Endpoints:
@@ -179,6 +179,8 @@ def google_auth_callback(request: Request, state: str, db: Session = Depends(get
         req_url = str(request.url)
         if "127.0.0.1:8000" in req_url:
             req_url = req_url.replace("127.0.0.1:8000", "localhost:8000")
+        if settings.GOOGLE_REDIRECT_URI.startswith("https://") and req_url.startswith("http://"):
+            req_url = req_url.replace("http://", "https://", 1)
             
         flow.fetch_token(authorization_response=req_url)
     except Exception as exc:

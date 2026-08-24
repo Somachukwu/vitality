@@ -244,7 +244,7 @@ document.getElementById('logout-btn').addEventListener('click', logout);
 
 // ── Google Health integration ─────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = 'https://vitality-659j.onrender.com/api';
 
 /** Render the Google Health row based on the status response */
 function renderGoogleStatus(status) {

@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:8000/api';
+const BASE_URL = 'https://vitality-659j.onrender.com/api';
 
 export function getToken() { return localStorage.getItem('token'); }
 

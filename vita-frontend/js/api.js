@@ -1,4 +1,4 @@
-const API_ORIGIN = 'http://localhost:8000';
+const API_ORIGIN = 'https://vitality-659j.onrender.com';
 const BASE_URL = `${API_ORIGIN}/api`;
 
 export function resolveApiUrl(path) {
