@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 10080  # 7 days
 
     APP_ENV: str = "development"
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: str = "https://somachukwu.github.io,http://localhost:8080,http://localhost:5173,http://localhost:3000,http://localhost:5500,http://127.0.0.1:8080"
 
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str

@@ -80,6 +80,7 @@ app.add_middleware(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
+    allow_origin_regex=r"https://.*\.github\.io",
     allow_credentials=True,    # required for session cookies during OAuth redirect
     allow_methods=["*"],
     allow_headers=["*"],
