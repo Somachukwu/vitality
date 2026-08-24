@@ -1,4 +1,4 @@
-name: Deploy VITA Frontend to GitHub Pages
+name: Deploy Vitality Frontend to GitHub Pages
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - "vita-frontend/**"
       - ".github/workflows/deploy-frontend.yml"
+
+  workflow_dispatch:
 
 permissions:
   contents: read
