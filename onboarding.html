@@ -14,15 +14,10 @@
       <h2>One last step</h2>
       <p class="muted text-sm mb-3">Help us tailor your daily targets.</p>
       <form id="onb-form" class="stack" novalidate>
-        <div class="grid grid-2">
-          <div>
-            <label for="height">Height (cm)</label>
-            <input id="height" type="number" min="100" max="240" placeholder="Enter your height" required />
-          </div>
-          <div>
-            <label for="weight">Weight (kg)</label>
-            <input id="weight" type="number" min="30" max="250" step="0.1" placeholder="Enter your weight" required />
-          </div>
+        <div>
+          <label for="height">Height (cm)</label>
+          <input id="height" type="number" min="100" max="240" placeholder="Enter your height" required />
+          <div class="text-xs muted mt-1">Weight will be measured by your smart scale automatically.</div>
         </div>
         <div>
           <label for="cal">Daily calorie target</label>
@@ -56,7 +51,6 @@
       try {
         const payload = {
           height:               Number(document.getElementById('height').value),
-          weight:                Number(document.getElementById('weight').value),
           daily_calorie_target: Number(document.getElementById('cal').value),
           dietary_restrictions: document.getElementById('diet').value.split(',').map(s => s.trim()).filter(Boolean),
           health_conditions:    document.getElementById('health').value.split(',').map(s => s.trim()).filter(Boolean),
