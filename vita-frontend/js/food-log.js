@@ -9,19 +9,31 @@ requireAuth();
 renderNav('food-log.html');
 initThemeToggle();
 
-const fileInput   = document.getElementById('file');
-const dropzone    = document.getElementById('dropzone');
-const preview     = document.getElementById('preview');
-const previewWrap = document.getElementById('preview-wrap');
-const result      = document.getElementById('result');
-const overlay     = document.getElementById('overlay');
-let selectedFile  = null;
-let lastDetection = null;
+const cameraFileInput  = document.getElementById('camera-file');
+const galleryFileInput = document.getElementById('gallery-file');
+const cameraBtn        = document.getElementById('camera-btn');
+const uploadBtn        = document.getElementById('upload-btn');
+const dropzone         = document.getElementById('dropzone');
+const preview          = document.getElementById('preview');
+const previewWrap      = document.getElementById('preview-wrap');
+const result           = document.getElementById('result');
+const overlay          = document.getElementById('overlay');
+let selectedFile       = null;
+let lastDetection      = null;
+
+if (cameraBtn) cameraBtn.addEventListener('click', (e) => { e.stopPropagation(); cameraFileInput.click(); });
+if (uploadBtn) uploadBtn.addEventListener('click', (e) => { e.stopPropagation(); galleryFileInput.click(); });
+
+dropzone.addEventListener('click', (e) => {
+  if (e.target.closest('button')) return;
+  galleryFileInput.click();
+});
 
 ['dragenter', 'dragover'].forEach(ev => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(ev => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
 dropzone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); });
-fileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
+cameraFileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
+galleryFileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
 
 async function handleFile(f) {
   if (!f || !f.type.startsWith('image/')) {
@@ -40,7 +52,11 @@ async function handleFile(f) {
 }
 
 document.getElementById('clear-btn').addEventListener('click', () => {
-  selectedFile = null; fileInput.value = ''; previewWrap.classList.add('hidden'); result.classList.add('hidden');
+  selectedFile = null;
+  cameraFileInput.value = '';
+  galleryFileInput.value = '';
+  previewWrap.classList.add('hidden');
+  result.classList.add('hidden');
 });
 
 function formatFoodName(name) {

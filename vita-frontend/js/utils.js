@@ -94,47 +94,98 @@ export function initThemeToggle(btnId = 'theme-btn') {
 
 export async function compressImage(file, maxDimension = 1920, quality = 0.85) {
   if (!file || !file.type.startsWith('image/')) return file;
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width <= maxDimension && height <= maxDimension && file.size <= 1.5 * 1024 * 1024) {
-        return resolve(file);
-      }
-      if (width > height) {
-        if (width > maxDimension) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        }
-      } else {
-        if (height > maxDimension) {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
+
+  const canvasToBlob = (canvas, q) => {
+    return new Promise((resolve) => {
       canvas.toBlob(
         (blob) => {
-          if (!blob) return resolve(file);
-          const name = (file.name || 'photo.jpg').replace(/\.[^/.]+$/, '') + '.jpg';
-          const compressedFile = new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() });
-          resolve(compressedFile);
+          if (blob && blob.size > 0) return resolve(blob);
+          try {
+            const dataUrl = canvas.toDataURL('image/jpeg', q);
+            const byteString = atob(dataUrl.split(',')[1]);
+            const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+              ia[i] = byteString.charCodeAt(i);
+            }
+            resolve(new Blob([ab], { type: mimeString }));
+          } catch {
+            resolve(null);
+          }
         },
         'image/jpeg',
-        quality
+        q
       );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(file);
-    };
-    img.src = url;
-  });
+    });
+  };
+
+  try {
+    let sourceWidth, sourceHeight, drawSource;
+    let cleanup = () => {};
+
+    if (typeof createImageBitmap === 'function') {
+      try {
+        const bitmap = await createImageBitmap(file);
+        sourceWidth = bitmap.width;
+        sourceHeight = bitmap.height;
+        drawSource = bitmap;
+        cleanup = () => bitmap.close();
+      } catch {
+        // Fall back to Image element if createImageBitmap fails
+      }
+    }
+
+    if (!drawSource) {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      cleanup = () => URL.revokeObjectURL(url);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error('Image load error'));
+        img.src = url;
+      });
+      sourceWidth = img.width;
+      sourceHeight = img.height;
+      drawSource = img;
+    }
+
+    if (sourceWidth <= maxDimension && sourceHeight <= maxDimension && file.size <= 800 * 1024) {
+      cleanup();
+      return file;
+    }
+
+    let targetWidth = sourceWidth;
+    let targetHeight = sourceHeight;
+    if (sourceWidth > maxDimension || sourceHeight > maxDimension) {
+      if (sourceWidth > sourceHeight) {
+        targetHeight = Math.round((sourceHeight * maxDimension) / sourceWidth);
+        targetWidth = maxDimension;
+      } else {
+        targetWidth = Math.round((sourceWidth * maxDimension) / sourceHeight);
+        targetHeight = maxDimension;
+      }
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+    ctx.drawImage(drawSource, 0, 0, targetWidth, targetHeight);
+    cleanup();
+
+    const blob = await canvasToBlob(canvas, quality);
+    if (!blob) return file;
+
+    const fileName = (file.name || 'photo.jpg').replace(/\.[^/.]+$/, '') + '.jpg';
+    return new File([blob], fileName, { type: 'image/jpeg', lastModified: Date.now() });
+
+  } catch (err) {
+    console.warn('Image compression fallback:', err);
+    return file;
+  }
 }
+
 

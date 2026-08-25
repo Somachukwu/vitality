@@ -21,12 +21,17 @@
       <main class="container stack">
         <section class="card">
           <div class="card-title">Log a new meal</div>
-          <label for="file" class="dropzone" id="dropzone">
+          <div class="dropzone" id="dropzone">
             <i data-lucide="camera"></i>
-            <div><strong>Take a photo or choose from gallery</strong></div>
-            <div class="text-xs muted mt-1">Camera photo, JPEG, PNG or WebP (auto-optimized)</div>
-            <input id="file" type="file" accept="image/*" capture="environment" hidden />
-          </label>
+            <div><strong>Take a photo or upload an image</strong></div>
+            <div class="text-xs muted mt-1">Capture directly with camera or select from photo library</div>
+            <div class="row gap-sm mt-2 flex-wrap" style="justify-content: center;">
+              <button class="btn btn-primary" id="camera-btn" type="button"><i data-lucide="camera"></i> Take Photo</button>
+              <button class="btn btn-ghost" id="upload-btn" type="button"><i data-lucide="image"></i> Upload Image</button>
+            </div>
+            <input id="camera-file" type="file" accept="image/*" capture="environment" hidden />
+            <input id="gallery-file" type="file" accept="image/*" hidden />
+          </div>
           <div id="preview-wrap" class="mt-2 hidden">
             <img id="preview" alt="Selected meal" style="width:100%; max-height:280px; object-fit:cover; border-radius:12px"/>
             <div class="mt-2">

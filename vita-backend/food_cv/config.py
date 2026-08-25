@@ -1,6 +1,6 @@
 """
 Central config. Update CLASSES as you add food categories — everything
-else (data prep, training, inference) reads from here so you only
+else (data prep, training, inference) reads from here so you only have to
 change it in one place.
 """
 

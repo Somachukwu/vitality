@@ -24,21 +24,6 @@ venv/
 env/
 .env/
 
-# ── ML model artefacts (large files — keep out of git) ────────
-vita-backend/food_cv/trained_model/
-vita-backend/food_cv/dataset/split/
-# Raw dataset images: exclude to keep repo size manageable.
-# If you need to version the dataset, use Git LFS or a dedicated
-# data store (e.g. Google Drive, DVC).
-vita-backend/food_cv/dataset/raw/
-*.keras
-*.h5
-*.tflite
-*.pb
-*.onnx
-*.pt
-*.pth
-
 # ── Uploaded user images ──────────────────────────────────────
 vita-backend/uploads/
 uploads/
