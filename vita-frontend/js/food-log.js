@@ -92,6 +92,7 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     formData.append('file', selectedFile);
     const r = await api.postForm('/food/analyze', formData);
     lastDetection = {
+      imageUrl: r.image_url,
       multiplier,
       confidence: r.confidence,
       lowConfidence: r.low_confidence,
@@ -153,7 +154,14 @@ function renderResult(d) {
     const mealType = hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 19 ? 'dinner' : 'snack';
     try {
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      if (d.imageUrl) {
+        formData.append('image_url', d.imageUrl);
+        if (d.detectedFoods?.[0]?.name) {
+          formData.append('food_name', d.detectedFoods[0].name.toLowerCase().replace(/ /g, '_'));
+        }
+      } else if (selectedFile) {
+        formData.append('file', selectedFile);
+      }
       formData.append('meal_type', mealType);
       formData.append('portion_multiplier', String(d.multiplier));
       await api.postForm('/food/log', formData);

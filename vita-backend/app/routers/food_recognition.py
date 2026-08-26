@@ -79,6 +79,19 @@ def _configure_cloudinary() -> bool:
         return False
 
 
+async def _upload_to_cloudinary(file_path: str) -> str | None:
+    if not _configure_cloudinary():
+        return None
+    try:
+        import asyncio
+        import cloudinary.uploader
+        res = await asyncio.to_thread(cloudinary.uploader.upload, file_path, folder="vitality_meals")
+        return res.get("secure_url") if res else None
+    except Exception as exc:
+        print("Cloudinary upload warning:", exc)
+        return None
+
+
 # ── Schemas returned by this router ──────────────────────────────────────────
 
 class AnalyzeResult:
@@ -95,15 +108,8 @@ async def analyze_food_photo(
     """
     Step 1 of the meal-logging flow.
 
-    Upload a photo → get back the recognised dish, estimated calories and macros.
+    Upload a photo → get back the recognised dish, estimated calories, macros, and image_url.
     Nothing is saved to the database yet — call POST /food/log to persist the meal.
-
-    Response fields:
-    - food_name           : predicted dish (e.g. "egusi")
-    - confidence          : model confidence 0–1
-    - low_confidence      : true if confidence < 0.6 (prompt user to confirm)
-    - calories / protein_g / carbs_g / fat_g : per typical serving
-    - serving_description : human-readable serving size used for the estimate
     """
     _validate_image(file)
     recognize_food = _load_recognizer()
@@ -112,57 +118,7 @@ async def analyze_food_photo(
     if len(image_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
 
-    suffix = Path(file.filename or "upload.jpg").suffix or ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(image_bytes)
-        tmp_path = tmp.name
-
-    try:
-        result = recognize_food(tmp_path)
-    except KeyError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
-    finally:
-        os.unlink(tmp_path)
-
-    return result
-
-
-@router.post("/log", response_model=MealOut, status_code=status.HTTP_201_CREATED)
-async def log_meal_from_photo(
-    file: UploadFile = File(..., description="Meal photo"),
-    meal_type: str = Form(..., description="breakfast | lunch | dinner | snack"),
-    portion_multiplier: float = Form(1.0, description="Scale factor for the estimated serving size (0.5 = half, 2.0 = double)"),
-    notes: str | None = Form(None),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Step 2 of the meal-logging flow (or call directly to do it in one shot).
-
-    Upload a photo + meal metadata → recognise → save Meal + MealItem → return saved record.
-    The photo is stored in uploads/meals/ and its URL is saved in the meal record so the
-    frontend can display the thumbnail.
-    """
-    _validate_image(file)
-
-    if meal_type not in VALID_MEAL_TYPES:
-        raise HTTPException(
-            status_code=422,
-            detail=f"meal_type must be one of: {', '.join(sorted(VALID_MEAL_TYPES))}",
-        )
-    if not (0.1 <= portion_multiplier <= 10.0):
-        raise HTTPException(status_code=422, detail="portion_multiplier must be between 0.1 and 10")
-
-    recognize_food = _load_recognizer()
-
-    image_bytes = await file.read()
-    if len(image_bytes) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
-
-    # Save image locally for food_cv inference
-    ext = Path(file.filename or "meal.jpg").suffix or ".jpg"
+    ext = Path(file.filename or "upload.jpg").suffix or ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
     save_path = UPLOADS_DIR / filename
     save_path.write_bytes(image_bytes)
@@ -176,17 +132,83 @@ async def log_meal_from_photo(
         save_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
 
-    # Determine image URL (Cloudinary or local static endpoint)
-    image_url = f"/uploads/meals/{filename}"
-    if _configure_cloudinary():
+    # Asynchronously upload to Cloudinary or fall back to local static URL
+    cloud_url = await _upload_to_cloudinary(str(save_path))
+    if cloud_url:
+        result["image_url"] = cloud_url
+        save_path.unlink(missing_ok=True)
+    else:
+        result["image_url"] = f"/uploads/meals/{filename}"
+
+    return result
+
+
+@router.post("/log", response_model=MealOut, status_code=status.HTTP_201_CREATED)
+async def log_meal_from_photo(
+    file: UploadFile | None = File(None, description="Meal photo (optional if image_url provided)"),
+    image_url: str | None = Form(None, description="Pre-uploaded image URL from /analyze"),
+    meal_type: str = Form(..., description="breakfast | lunch | dinner | snack"),
+    portion_multiplier: float = Form(1.0, description="Scale factor for serving size"),
+    food_name: str | None = Form(None, description="Optionally override recognised dish name"),
+    notes: str | None = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Step 2 of the meal-logging flow (or call directly to do it in one shot).
+
+    Saves Meal + MealItem → returns saved record instantly using pre-analyzed image_url.
+    """
+    if meal_type not in VALID_MEAL_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"meal_type must be one of: {', '.join(sorted(VALID_MEAL_TYPES))}",
+        )
+    if not (0.1 <= portion_multiplier <= 10.0):
+        raise HTTPException(status_code=422, detail="portion_multiplier must be between 0.1 and 10")
+
+    recognize_food = _load_recognizer()
+    final_image_url = image_url
+    result = None
+
+    if file and file.filename:
+        _validate_image(file)
+        image_bytes = await file.read()
+        if len(image_bytes) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
+
+        ext = Path(file.filename or "meal.jpg").suffix or ".jpg"
+        filename = f"{uuid.uuid4().hex}{ext}"
+        save_path = UPLOADS_DIR / filename
+        save_path.write_bytes(image_bytes)
+
         try:
-            import cloudinary.uploader
-            res = cloudinary.uploader.upload(str(save_path), folder="vitality_meals")
-            if res and "secure_url" in res:
-                image_url = res["secure_url"]
-                save_path.unlink(missing_ok=True)  # Clean up local file after cloud upload
-        except Exception as e:
-            print("Cloudinary upload failed, falling back to local storage:", e)
+            result = recognize_food(str(save_path))
+        except Exception as exc:
+            save_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
+
+        if not final_image_url:
+            cloud_url = await _upload_to_cloudinary(str(save_path))
+            if cloud_url:
+                final_image_url = cloud_url
+                save_path.unlink(missing_ok=True)
+            else:
+                final_image_url = f"/uploads/meals/{filename}"
+
+    # If food_name provided without result dict, perform lookup or fallback
+    if not result:
+        from food_cv.nutrition_lookup import get_nutrition
+        dish = food_name or "jollof_rice"
+        nutrition = get_nutrition(dish)
+        result = {
+            "food_name": dish,
+            "calories": nutrition.calories,
+            "protein_g": nutrition.protein_g,
+            "carbs_g": nutrition.carbs_g,
+            "fat_g": nutrition.fat_g,
+            "serving_description": nutrition.serving_description,
+        }
 
     pm = portion_multiplier
     now = datetime.now(timezone.utc)
@@ -196,11 +218,10 @@ async def log_meal_from_photo(
         meal_type=meal_type,
         logged_at=now,
         notes=notes,
-        image_url=image_url,
+        image_url=final_image_url or "/uploads/meals/default.jpg",
         total_calories=round(result["calories"] * pm, 1),
         total_carbs=round(result["carbs_g"] * pm, 1),
         total_protein=round(result["protein_g"] * pm, 1),
-        total_fat=round(result["fat_g"] * pm, 1),
     )
     db.add(meal)
     db.flush()
