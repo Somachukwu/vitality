@@ -9,19 +9,50 @@ requireAuth();
 renderNav('food-log.html');
 initThemeToggle();
 
-const fileInput   = document.getElementById('file');
-const dropzone    = document.getElementById('dropzone');
-const preview     = document.getElementById('preview');
-const previewWrap = document.getElementById('preview-wrap');
-const result      = document.getElementById('result');
-const overlay     = document.getElementById('overlay');
-let selectedFile  = null;
-let lastDetection = null;
+const cameraFileInput  = document.getElementById('camera-file');
+const galleryFileInput = document.getElementById('gallery-file');
+const dropzone         = document.getElementById('dropzone');
+const optionModal      = document.getElementById('option-modal');
+const modalCameraBtn   = document.getElementById('modal-camera-btn');
+const modalGalleryBtn  = document.getElementById('modal-gallery-btn');
+const modalCancelBtn   = document.getElementById('modal-cancel-btn');
+const preview          = document.getElementById('preview');
+const previewWrap      = document.getElementById('preview-wrap');
+const result           = document.getElementById('result');
+const overlay          = document.getElementById('overlay');
+let selectedFile       = null;
+let lastDetection      = null;
+
+dropzone.addEventListener('click', () => {
+  optionModal.classList.remove('hidden');
+  initLucide();
+});
+
+modalCancelBtn.addEventListener('click', () => {
+  optionModal.classList.add('hidden');
+});
+
+modalCameraBtn.addEventListener('click', () => {
+  optionModal.classList.add('hidden');
+  cameraFileInput.click();
+});
+
+modalGalleryBtn.addEventListener('click', () => {
+  optionModal.classList.add('hidden');
+  galleryFileInput.click();
+});
+
+optionModal.addEventListener('click', (e) => {
+  if (e.target === optionModal) {
+    optionModal.classList.add('hidden');
+  }
+});
 
 ['dragenter', 'dragover'].forEach(ev => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('dragover'); }));
 ['dragleave', 'drop'].forEach(ev => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('dragover'); }));
 dropzone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) handleFile(f); });
-fileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
+cameraFileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
+galleryFileInput.addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) handleFile(f); });
 
 async function handleFile(f) {
   if (!f || !f.type.startsWith('image/')) {
@@ -41,7 +72,8 @@ async function handleFile(f) {
 
 document.getElementById('clear-btn').addEventListener('click', () => {
   selectedFile = null;
-  fileInput.value = '';
+  cameraFileInput.value = '';
+  galleryFileInput.value = '';
   previewWrap.classList.add('hidden');
   result.classList.add('hidden');
 });

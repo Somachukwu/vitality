@@ -21,12 +21,31 @@
       <main class="container stack">
         <section class="card">
           <div class="card-title">Log a new meal</div>
-          <label for="file" class="dropzone" id="dropzone">
+          <div class="dropzone" id="dropzone">
             <i data-lucide="camera"></i>
             <div><strong>Take a photo or choose from gallery</strong></div>
-            <div class="text-xs muted mt-1">Camera photo, JPEG, PNG or WebP (auto-optimized)</div>
-            <input id="file" type="file" accept="image/*" hidden />
-          </label>
+            <div class="text-xs muted mt-1">Camera photo, JPEG, PNG or WebP</div>
+            <input id="camera-file" type="file" accept="image/*" capture="environment" hidden />
+            <input id="gallery-file" type="file" accept="image/*" hidden />
+          </div>
+
+  <div id="option-modal" class="overlay hidden">
+    <div class="overlay-card" style="width: 90%; max-width: 360px; padding: 1.5rem;">
+      <div style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.5rem;">Choose photo source</div>
+      <p class="muted text-xs mb-2">Snap a photo of your meal or upload an image from your gallery.</p>
+      <div class="stack gap-sm mt-2">
+        <button class="btn btn-primary btn-block row center gap-sm" id="modal-camera-btn" type="button">
+          <i data-lucide="camera"></i> Take Photo with Camera
+        </button>
+        <button class="btn btn-ghost btn-block row center gap-sm" id="modal-gallery-btn" type="button">
+          <i data-lucide="image"></i> Upload from Gallery
+        </button>
+        <button class="btn btn-ghost btn-block mt-1 text-xs muted" id="modal-cancel-btn" type="button">
+          Cancel
+        </button>
+      </div>
+    </div>
+  </div>
           <div id="preview-wrap" class="mt-2 hidden">
             <img id="preview" alt="Selected meal" style="width:100%; max-height:280px; object-fit:cover; border-radius:12px"/>
             <div class="mt-2">
