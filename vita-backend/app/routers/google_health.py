@@ -31,6 +31,9 @@ from app.services.google_health_service import sync_google_health
 if settings.APP_ENV == "development":
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
+# Relax token scope matching (Google expands/reorders fitness & health scopes during grant)
+os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
+
 
 router = APIRouter(
     prefix="/auth/google",

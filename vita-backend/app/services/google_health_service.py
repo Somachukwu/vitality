@@ -46,7 +46,7 @@ def _get_credentials(token_row: GoogleHealthToken) -> Credentials | None:
         scopes=token_row.scopes or [],
     )
     if token_row.token_expiry:
-        credentials.expiry = token_row.token_expiry.replace(tzinfo=timezone.utc)
+        credentials.expiry = token_row.token_expiry.replace(tzinfo=None)
     return credentials
 
 
@@ -69,7 +69,7 @@ def _refresh_if_needed(credentials: Credentials, token_row: GoogleHealthToken, d
 
     token_row.access_token = encrypt(credentials.token)
     if credentials.expiry:
-        token_row.token_expiry = credentials.expiry.astimezone(timezone.utc).replace(tzinfo=None)
+        token_row.token_expiry = credentials.expiry.replace(tzinfo=None) if credentials.expiry.tzinfo is None else credentials.expiry.astimezone(timezone.utc).replace(tzinfo=None)
     db.commit()
     return True
 
