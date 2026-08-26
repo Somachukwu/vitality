@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Separate secret for session middleware — must NOT be the same as JWT_SECRET_KEY
     SESSION_SECRET_KEY: str
 
+    # Cloudinary Cloud Storage URL (e.g. cloudinary://API_KEY:API_SECRET@CLOUD_NAME)
+    CLOUDINARY_URL: str | None = None
+
     @property
     def database_url(self) -> str:
         password = quote_plus(self.DB_PASSWORD)

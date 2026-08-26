@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.dependencies import get_current_user
 from app.database import get_db
 from app.models.meal import Meal, MealItem
@@ -133,7 +134,7 @@ async def log_meal_from_photo(
     if len(image_bytes) > MAX_IMAGE_BYTES:
         raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
 
-    # Save image so the frontend can display the meal thumbnail later
+    # Save image locally for food_cv inference
     ext = Path(file.filename or "meal.jpg").suffix or ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
     save_path = UPLOADS_DIR / filename
@@ -148,6 +149,19 @@ async def log_meal_from_photo(
         save_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
 
+    # Determine image URL (Cloudinary or local static endpoint)
+    image_url = f"/uploads/meals/{filename}"
+    if settings.CLOUDINARY_URL:
+        try:
+            import cloudinary
+            import cloudinary.uploader
+            cloudinary.config(cloudinary_url=settings.CLOUDINARY_URL)
+            res = cloudinary.uploader.upload(str(save_path), folder="vitality_meals")
+            image_url = res.get("secure_url") or image_url
+            save_path.unlink(missing_ok=True)  # Clean up local file after cloud upload
+        except Exception as e:
+            print("Cloudinary upload failed, falling back to local storage:", e)
+
     pm = portion_multiplier
     now = datetime.now(timezone.utc)
 
@@ -156,7 +170,7 @@ async def log_meal_from_photo(
         meal_type=meal_type,
         logged_at=now,
         notes=notes,
-        image_url=f"/uploads/meals/{filename}",
+        image_url=image_url,
         total_calories=round(result["calories"] * pm, 1),
         total_carbs=round(result["carbs_g"] * pm, 1),
         total_protein=round(result["protein_g"] * pm, 1),

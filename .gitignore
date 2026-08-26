@@ -25,8 +25,12 @@ env/
 .env/
 
 # ── Uploaded user images ──────────────────────────────────────
-vita-backend/uploads/
-uploads/
+vita-backend/uploads/*
+!vita-backend/uploads/.gitkeep
+vita-backend/uploads/meals/*
+!vita-backend/uploads/meals/.gitkeep
+uploads/*
+!uploads/.gitkeep
 
 # ── ESP32 device secrets (WiFi credentials + API keys) ─────────
 vita-esp32/vita_station/config.h
@@ -54,12 +58,16 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # ── IDE / OS ─────────────────────────────────────────────────
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 .idea/
 .DS_Store
 Thumbs.db
 *.suo
 *.sw?
+*.ntvs*
+*.njsproj
+*.sln
 
 # ── Claude Code session data ──────────────────────────────────
 .claude/
