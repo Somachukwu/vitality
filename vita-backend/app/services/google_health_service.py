@@ -183,7 +183,11 @@ def _fetch_latest_metrics(headers: dict[str, str], start: datetime, end: datetim
         ("temperature", "core-body-temperature", "coreBodyTemperature", "temperatureCelsius", "core_body_temperature"),
     ):
         filter_expression = f'{filter_key}.sample_time.physical_time >= "{start_iso}" AND {filter_key}.sample_time.physical_time < "{end_iso}"'
-        value = _latest_value(_list_data_points(headers, data_type, filter_expression), data_key, value_key)
+        points = _list_data_points(headers, data_type, filter_expression)
+        if not points:
+            # Fallback: query without strict date filter to catch recent readings
+            points = _list_data_points(headers, data_type, "", page_size=20)
+        value = _latest_value(points, data_key, value_key)
         if value is not None:
             metrics[vital_field] = round(value, 1)
     return metrics
@@ -201,7 +205,10 @@ def _parse_google_datetime(value: str | None) -> datetime | None:
 def _sync_sleep_sessions(user_id: int, db: Session, headers: dict[str, str], start: datetime, end: datetime) -> int:
     start_iso = start.strftime("%Y-%m-%dT%H:%M:%SZ")
     end_iso = end.strftime("%Y-%m-%dT%H:%M:%SZ")
-    points = _list_data_points(headers, "sleep", f'sleep.interval.end_time >= "{start_iso}" AND sleep.interval.end_time < "{end_iso}"', page_size=25)
+    filter_expr = f'sleep.interval.end_time >= "{start_iso}" AND sleep.interval.end_time < "{end_iso}"'
+    points = _list_data_points(headers, "sleep", filter_expr, page_size=25)
+    if not points:
+        points = _list_data_points(headers, "sleep", "", page_size=25)
     created = 0
     for point in points:
         sleep = point.get("sleep", {})
@@ -233,8 +240,8 @@ def _sync_sleep_sessions(user_id: int, db: Session, headers: dict[str, str], sta
     return created
 
 
-def sync_google_health(user_id: int, db: Session, hours_back: int = 24) -> dict[str, int]:
-    """Synchronize Google Health data into VITALITY's Vitals and SleepSession records."""
+def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[str, int]:
+    """Synchronize Google Health v4 data into VITALITY's Vitals and SleepSession records."""
     token_row = db.query(GoogleHealthToken).filter(
         GoogleHealthToken.user_id == user_id,
         GoogleHealthToken.is_active.is_(True),
@@ -264,7 +271,7 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 24) -> dict[
         for field, value in metrics.items():
             setattr(record, field, value)
         record.recorded_at = now.replace(tzinfo=None)
-        synced_count = 1
+        synced_count = len(metrics)
 
     sleep_sessions_synced = _sync_sleep_sessions(user_id, db, headers, sync_start, now)
     token_row.last_synced_at = now.replace(tzinfo=None)

@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models.device import Device
 from app.models.user import User
 from app.models.vitals import Vitals
+from app.models.google_health_token import GoogleHealthToken
 from app.schemas.vitals import (
     VitalsIngest, VitalsLatestOut, VitalsOut,
     VitalsDailySummary, SyncAllOut,
@@ -138,6 +139,14 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
                     best = val
         if best is not None:
             setattr(out, field, best)
+
+    token_row = (
+        db.query(GoogleHealthToken)
+        .filter(GoogleHealthToken.user_id == user.id, GoogleHealthToken.is_active == True)
+        .first()
+    )
+    if token_row:
+        out.last_google_sync = token_row.last_synced_at
 
     return out
 

@@ -35,6 +35,7 @@ class VitalsOut(BaseModel):
 
 class VitalsLatestOut(VitalsOut):
     device_name: str | None = None
+    last_google_sync: datetime | None = None
 
 
 class VitalsDailySummary(BaseModel):

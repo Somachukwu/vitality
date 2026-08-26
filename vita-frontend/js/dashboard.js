@@ -24,6 +24,7 @@ function adaptVitals(v) {
     steps:          v.steps,
     distanceKm:     v.distance_km,
     timestamp:      v.recorded_at,
+    lastGoogleSync: v.last_google_sync,
   };
 }
 
@@ -66,7 +67,9 @@ function renderVitals(v) {
   document.getElementById('s-hr').innerHTML   = statusDot(vitalsStatus('heartRate',   v.heartRate));
   document.getElementById('s-spo2').innerHTML = statusDot(vitalsStatus('spo2',        v.spo2));
   document.getElementById('s-temp').innerHTML = statusDot(vitalsStatus('temperature', v.temperature));
-  document.getElementById('last-sync').textContent = 'Last synced ' + formatTime(v.timestamp);
+  
+  const syncTime = v.lastGoogleSync || v.timestamp;
+  document.getElementById('last-sync').textContent = syncTime ? 'Last synced ' + formatTime(syncTime) : 'No sync data yet';
 }
 
 function renderBmi(weightKg, heightCm) {
