@@ -1,7 +1,7 @@
 import { requireAuth, logout } from './auth.js';
 import { renderNav } from './nav.js';
 import { toast, applyStoredTheme, initThemeToggle, initLucide } from './utils.js';
-import { api } from './api.js';
+import { api, BASE_URL } from './api.js';
 
 applyStoredTheme();
 requireAuth();
@@ -243,8 +243,7 @@ document.getElementById('change-pw').addEventListener('click', () => toast('Pass
 document.getElementById('logout-btn').addEventListener('click', logout);
 
 // ── Google Health integration ─────────────────────────────────────────────────
-
-const API_BASE = 'https://vitality-659j.onrender.com/api';
+const API_BASE = BASE_URL;
 
 /** Render the Google Health row based on the status response */
 function renderGoogleStatus(status) {

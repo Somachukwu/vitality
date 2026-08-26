@@ -59,10 +59,13 @@ def seed():
 
         rec = Recommendation(
             user_id=user.id,
-            type="nutrition",
+            type="health_alert",
             severity="info",
-            title="Welcome to Vita!",
-            message="Connect your ESP32 device to start tracking your vitals.",
+            tier="primary_action",
+            rule_id="onboarding.google_health",
+            title="Connect Google Health",
+            message="Connect your Google Health account in Profile to sync your live vitals, sleep, and steps.",
+            action_data={"action_label": "Connect Google Health", "route": "/profile.html"},
         )
         db.add(rec)
         db.commit()

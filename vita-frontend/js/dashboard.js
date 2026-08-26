@@ -161,7 +161,7 @@ async function loadAll() {
     renderVitals(adaptVitals(v));
     latestWeight = v.weight;
   } catch {
-    document.getElementById('last-sync').textContent = 'No device data yet';
+    document.getElementById('last-sync').textContent = 'No Google Health / Scale data yet';
   }
 
   // BMI — last reading from the smart scale, falling back to the manually-entered profile weight
@@ -173,7 +173,7 @@ async function loadAll() {
     if (recs.length) {
       renderRec(recs[0]);
     } else {
-      document.getElementById('rec-text').textContent = 'No tips yet — log a meal or sync your device to get personalized recommendations.';
+      document.getElementById('rec-text').textContent = 'No tips yet — log a meal or connect your Google Health account in Profile to get personalized recommendations.';
     }
   } catch {
     document.getElementById('rec-text').textContent = 'Could not load your recommendation right now.';

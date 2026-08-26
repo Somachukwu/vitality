@@ -15,23 +15,60 @@ from app.routers import auth, devices, food_recognition, meals, recommendations,
 
 
 async def _warmup_model_task():
-    """Background task: pre-warm food recognition AI model in RAM without blocking server boot."""
+    """Background task: pre-warm food recognition AI model in RAM and compile graph without blocking server boot."""
     def _warmup():
         try:
+            import numpy as np
+            from food_cv import config
             from food_cv.inference import _load_model
-            _load_model()
-            print("INFO: Food recognition AI model pre-warmed in RAM.")
+            model, _ = _load_model()
+            # Feed a single dummy batch to trigger TensorFlow kernel compilation
+            dummy_batch = np.zeros((1, config.IMAGE_SIZE[0], config.IMAGE_SIZE[1], 3), dtype=np.float32)
+            model.predict(dummy_batch, verbose=0)
+            print("INFO: Food recognition AI model pre-warmed and computational graph compiled in RAM.")
         except Exception as exc:
             print("NOTICE: Food recognition model warmup skipped:", exc)
 
     await asyncio.to_thread(_warmup)
 
 
+async def _keep_alive_task():
+    """Background task: periodically pings the public health endpoint to prevent Render free-tier idle spin-down."""
+    url = settings.KEEP_ALIVE_URL or settings.RENDER_EXTERNAL_URL
+    if not url:
+        return
+
+    health_url = f"{url.rstrip('/')}/api/health"
+    print(f"INFO: Keep-alive service active. Target: {health_url} (every 14m)")
+
+    try:
+        import httpx
+    except ImportError:
+        print("NOTICE: httpx not available for keep-alive task.")
+        return
+
+    while True:
+        try:
+            await asyncio.sleep(14 * 60)  # Wait 14 minutes
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.get(health_url)
+                if res.status_code == 200:
+                    print("INFO: Keep-alive ping successful.")
+                else:
+                    print(f"NOTICE: Keep-alive ping returned status {res.status_code}")
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            print(f"NOTICE: Keep-alive ping error: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Pre-warm AI model asynchronously on startup so first request has zero cold-start delay
     asyncio.create_task(_warmup_model_task())
+    keep_alive = asyncio.create_task(_keep_alive_task())
     yield
+    keep_alive.cancel()
 
 
 def _run_migrations():
@@ -77,6 +114,21 @@ def _run_migrations():
             for col_name, col_def in new_vitals_cols.items():
                 if col_name not in cols:
                     conn.execute(text(f"ALTER TABLE vitals ADD COLUMN {col_name} {col_def}"))
+                    conn.commit()
+
+        # ── recommendations table ────────────────────────────────────────────────
+        if "recommendations" in inspector.get_table_names():
+            cols = {c["name"] for c in inspector.get_columns("recommendations")}
+            new_rec_cols = {
+                "tier":        "ENUM('safety','primary_action','supporting_insight') NOT NULL DEFAULT 'primary_action'",
+                "rule_id":     "VARCHAR(100) NULL",
+                "evidence":    "JSON NULL",
+                "action_data": "JSON NULL",
+                "expires_at":  "DATETIME NULL",
+            }
+            for col_name, col_def in new_rec_cols.items():
+                if col_name not in cols:
+                    conn.execute(text(f"ALTER TABLE recommendations ADD COLUMN {col_name} {col_def}"))
                     conn.commit()
 
 

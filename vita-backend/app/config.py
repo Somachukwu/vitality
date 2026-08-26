@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # Cloudinary Cloud Storage URL (e.g. cloudinary://API_KEY:API_SECRET@CLOUD_NAME)
     CLOUDINARY_URL: str | None = None
 
+    # Render / Cloud Keep-Alive Settings (prevents free-tier idle spin-down)
+    KEEP_ALIVE_URL: str | None = None
+    RENDER_EXTERNAL_URL: str | None = None
+
     @property
     def database_url(self) -> str:
         password = quote_plus(self.DB_PASSWORD)
