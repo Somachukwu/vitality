@@ -1,70 +1,70 @@
 """
 Anomaly detection over a user's recent history of DailySnapshots.
 
-Design choice: Isolation Forest, unsupervised, per-user. We don't need
-labeled "this was a bad day" data (which nobody has) — Isolation Forest
-just learns what's "normal" for THIS user from their own recent history
-and flags days that deviate. This is what makes it feasible to defend:
-no external dataset, no training pipeline, works from day one of
-sparse per-user data (falls back gracefully below a minimum history size).
-
-Output is not shown to the user directly — it adds facts (e.g.
-"vitals_anomaly": True) that the rule engine's correlation rules can
-react to, keeping the final explanation rule-based and readable.
+Uses an unsupervised Isolation Forest trained on the user's own dense history
+to flag statistical multivariate anomalies (e.g. sudden drop in sleep + spike in HR)
+without diagnostic claims.
 """
 
 from typing import Optional
-
 import numpy as np
 
 from ..models import DailySnapshot
 
-MIN_HISTORY_FOR_ML = 10  # need at least this many prior days to train meaningfully
+MIN_HISTORY_FOR_ML = 10
 
 
-def _snapshot_to_vector(s: DailySnapshot) -> Optional[list]:
-    """Only include a snapshot if it has enough non-null fields to be useful."""
-    fields = [
+def _extract_raw_features(s: DailySnapshot) -> list[Optional[float]]:
+    return [
         s.avg_heart_rate,
         s.resting_heart_rate,
         s.avg_spo2,
         s.total_sleep_hours,
-        s.avg_stress_score,
         s.total_steps,
-        s.calorie_balance,
+        s.total_calories,
     ]
-    if sum(1 for f in fields if f is None) > 2:
-        return None
-    # Fill remaining Nones with 0 — Isolation Forest tolerates this fine
-    # since it's per-feature and consistent across the history.
-    return [f if f is not None else 0.0 for f in fields]
 
 
 def detect_anomaly(history: list[DailySnapshot], today: DailySnapshot) -> dict:
     """
     Returns a facts dict, e.g. {"vitals_anomaly": True, "anomaly_score": -0.31}
-    Safe to call with sparse data — returns {} if there isn't enough history.
+    Safe with sparse history — returns {} if there isn't enough history.
     """
-    usable_history = [v for s in history if (v := _snapshot_to_vector(s)) is not None]
-    today_vec = _snapshot_to_vector(today)
-
-    if len(usable_history) < MIN_HISTORY_FOR_ML or today_vec is None:
+    if len(history) < MIN_HISTORY_FOR_ML:
         return {}
+
+    raw_matrix = [_extract_raw_features(s) for s in history]
+    today_raw = _extract_raw_features(today)
+
+    # Filter out days with >2 missing features
+    valid_rows = [row for row in raw_matrix if sum(1 for v in row if v is None) <= 2]
+    if len(valid_rows) < MIN_HISTORY_FOR_ML or sum(1 for v in today_raw if v is None) > 2:
+        return {}
+
+    # Compute column means for safe imputation instead of 0.0
+    cols_count = len(today_raw)
+    col_means = []
+    for col_idx in range(cols_count):
+        vals = [r[col_idx] for r in valid_rows if r[col_idx] is not None]
+        col_means.append(float(np.mean(vals)) if vals else 0.0)
+
+    # Impute missing values with column means
+    X = np.array([[r[c] if r[c] is not None else col_means[c] for c in range(cols_count)] for r in valid_rows])
+    today_vec = np.array([today_raw[c] if today_raw[c] is not None else col_means[c] for c in range(cols_count)]).reshape(1, -1)
 
     try:
         from sklearn.ensemble import IsolationForest
     except ImportError:
         return {}
 
-    X = np.array(usable_history)
-    model = IsolationForest(n_estimators=100, contamination=0.15, random_state=42)
+    model = IsolationForest(n_estimators=50, contamination=0.15, random_state=42)
     model.fit(X)
 
-    today_arr = np.array(today_vec).reshape(1, -1)
-    prediction = model.predict(today_arr)[0]  # -1 = anomaly, 1 = normal
-    score = float(model.decision_function(today_arr)[0])
+    prediction = model.predict(today_vec)[0]  # -1 = anomaly, 1 = normal
+    score = float(model.decision_function(today_vec)[0])
 
     return {
-        "vitals_anomaly": prediction == -1,
-        "anomaly_score": score,
+        "vitals_anomaly": bool(prediction == -1),
+        "anomaly_score": round(score, 3),
     }
+

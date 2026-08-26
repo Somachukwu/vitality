@@ -119,9 +119,7 @@ app.include_router(recommendations.router, prefix="/api")
 app.include_router(google_health.router, prefix="/api")
 
 # Serve uploaded meal images as static files at /uploads/meals/<filename>
-_uploads_dir = Path(__file__).parent.parent / "uploads"
-_uploads_dir.mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(_uploads_dir)), name="uploads")
+app.mount("/uploads", StaticFiles(directory=str(settings.uploads_dir)), name="uploads")
 
 
 @app.get("/api/health")

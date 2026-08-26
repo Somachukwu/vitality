@@ -1,5 +1,8 @@
-const API_ORIGIN = 'https://vitality-659j.onrender.com';
-const BASE_URL = `${API_ORIGIN}/api`;
+// Dynamic API origin: auto-detects localhost for local testing or falls back to production Render backend.
+// Can be manually overridden in browser console with: localStorage.setItem('VITA_API_URL', 'http://...')
+const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+export const API_ORIGIN = localStorage.getItem('VITA_API_URL') || (isLocalhost ? 'http://localhost:8000' : 'https://vitality-659j.onrender.com');
+export const BASE_URL = `${API_ORIGIN}/api`;
 
 export function resolveApiUrl(path) {
   return path && path.startsWith('/') ? `${API_ORIGIN}${path}` : path;

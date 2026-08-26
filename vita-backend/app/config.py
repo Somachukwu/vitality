@@ -1,6 +1,17 @@
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from pydantic_settings import BaseSettings
+
+# ── Centralized Filesystem Paths ──────────────────────────────────────────────
+APP_DIR = Path(__file__).resolve().parent
+BACKEND_DIR = APP_DIR.parent
+PROJECT_ROOT = BACKEND_DIR.parent
+UPLOADS_DIR = BACKEND_DIR / "uploads"
+MEALS_UPLOAD_DIR = UPLOADS_DIR / "meals"
+
+# Guarantee that upload directories exist safely on startup
+MEALS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class Settings(BaseSettings):
@@ -41,6 +52,18 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",")]
+
+    @property
+    def uploads_dir(self) -> Path:
+        return UPLOADS_DIR
+
+    @property
+    def meals_upload_dir(self) -> Path:
+        return MEALS_UPLOAD_DIR
+
+    @property
+    def project_root(self) -> Path:
+        return PROJECT_ROOT
 
     class Config:
         env_file = ".env"

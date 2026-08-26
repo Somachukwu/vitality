@@ -19,15 +19,16 @@ import sys
 import urllib.error
 import urllib.request
 
-SEP = "─" * 62
+SEP = "-" * 62
 
 # ── Read config from adjacent files so this stays in sync automatically ──
 def _read_config_value(pattern: str, default: str) -> str:
     cfg = os.path.join(
-        os.path.dirname(__file__), "..", "vita-esp32", "vita_wearable", "config.h"
+        os.path.dirname(os.path.abspath(__file__)), "..", "vita-esp32", "vita_wearable", "config.h"
     )
     if os.path.exists(cfg):
-        m = re.search(pattern, open(cfg).read())
+        with open(cfg, "r", encoding="utf-8", errors="ignore") as f:
+            m = re.search(pattern, f.read())
         if m:
             return m.group(1)
     return default
@@ -64,24 +65,24 @@ def _read_env() -> dict:
 # ── 1. Database check ─────────────────────────────────────────────────────
 def check_db() -> None:
     print(f"\n{SEP}")
-    print("  1 / 3  —  DATABASE CHECK")
+    print("  1 / 3  -  DATABASE CHECK")
     print(SEP)
 
     try:
         import pymysql
     except ImportError:
-        print("[DB] pymysql not installed — run:  pip install pymysql")
+        print("[DB] pymysql not installed - run:  pip install pymysql")
         return
 
     db_cfg = _read_env()
     try:
         conn = pymysql.connect(connect_timeout=5, **db_cfg)
     except Exception as e:
-        print(f"[DB] ✗ Cannot connect to MySQL at {db_cfg['host']}:{db_cfg['port']}: {e}")
+        print(f"[DB] [X] Cannot connect to MySQL at {db_cfg['host']}:{db_cfg['port']}: {e}")
         print("[DB]   Is MySQL running?  Check the service / XAMPP / Workbench.")
         return
 
-    print(f"[DB] ✓ Connected to {db_cfg['host']}:{db_cfg['port']}/{db_cfg['database']}")
+    print(f"[DB] [OK] Connected to {db_cfg['host']}:{db_cfg['port']}/{db_cfg['database']}")
 
     with conn.cursor() as cur:
         cur.execute(
@@ -92,7 +93,7 @@ def check_db() -> None:
         row = cur.fetchone()
 
     if row:
-        print(f"[DB] ✓ Device FOUND:")
+        print(f"[DB] [OK] Device FOUND:")
         print(f"       id        = {row[0]}")
         print(f"       name      = {row[1]}")
         print(f"       type      = {row[2]}")
@@ -102,11 +103,11 @@ def check_db() -> None:
         print(f"       user_id   = {row[6]}")
         if not row[4]:
             print()
-            print("[DB] ✗ Device is INACTIVE — the ESP32 will receive HTTP 401.")
+            print("[DB] [X] Device is INACTIVE - the ESP32 will receive HTTP 401.")
             print("[DB]   Fix it in MySQL Workbench or run:")
             print(f"[DB]     UPDATE devices SET is_active=1 WHERE id={row[0]};")
     else:
-        print(f"[DB] ✗ Device NOT FOUND  (api_key starts with: {API_KEY[:20]}...)")
+        print(f"[DB] [X] Device NOT FOUND  (api_key starts with: {API_KEY[:20]}...)")
 
         with conn.cursor() as cur:
             cur.execute(
@@ -123,7 +124,7 @@ def check_db() -> None:
             print("       (none — database is empty)")
 
         print()
-        print("[DB] ✗ ACTION REQUIRED:")
+        print("[DB] [X] ACTION REQUIRED:")
         print("[DB]   The wearable's API key is not registered.")
         print("[DB]   Steps:")
         print("[DB]   1. Flash the wearable once and note the Chip UID on the OLED")
@@ -138,15 +139,15 @@ def check_db() -> None:
 # ── 2. Server check ───────────────────────────────────────────────────────
 def check_server() -> bool:
     print(f"\n{SEP}")
-    print(f"  2 / 3  —  SERVER CHECK  ({SERVER_BASE})")
+    print(f"  2 / 3  -  SERVER CHECK  ({SERVER_BASE})")
     print(SEP)
     try:
         resp = urllib.request.urlopen(f"{SERVER_BASE}/api/health", timeout=5)
         data = json.loads(resp.read())
-        print(f"[HTTP] ✓ Server is UP: {data}")
+        print(f"[HTTP] [OK] Server is UP: {data}")
         return True
     except urllib.error.URLError as e:
-        print(f"[HTTP] ✗ Server is DOWN or unreachable: {e.reason}")
+        print(f"[HTTP] [X] Server is DOWN or unreachable: {e.reason}")
         print()
         print("[HTTP]   Most likely cause: uvicorn is not running, or it was started")
         print("[HTTP]   without  --host 0.0.0.0  (defaults to localhost-only).")
@@ -157,14 +158,14 @@ def check_server() -> bool:
         print()
         return False
     except Exception as e:
-        print(f"[HTTP] ✗ Unexpected error: {e}")
+        print(f"[HTTP] [X] Unexpected error: {e}")
         return False
 
 
 # ── 3. Simulated ESP32 POST ───────────────────────────────────────────────
 def test_post() -> None:
     print(f"\n{SEP}")
-    print("  3 / 3  —  SIMULATED ESP32 POST")
+    print("  3 / 3  -  SIMULATED ESP32 POST")
     print(SEP)
 
     payload = json.dumps({
@@ -187,29 +188,29 @@ def test_post() -> None:
     try:
         resp = urllib.request.urlopen(req, timeout=5)
         body = json.loads(resp.read())
-        print(f"[POST] ✓ SUCCESS  (HTTP 201)")
+        print(f"[POST] [OK] SUCCESS  (HTTP 201)")
         print(f"[POST]   Saved vitals  id={body.get('id')}")
         print()
-        print("[POST] ✓ The backend is fully working end-to-end.")
+        print("[POST] [OK] The backend is fully working end-to-end.")
         print("[POST]   If the ESP32 is still not sending data, the problem is")
-        print("[POST]   network-only — not the backend.  Check:")
-        print(f"[POST]   — ESP32 and this PC on the same WiFi network?")
-        print(f"[POST]   — Windows Firewall blocking inbound on port 8000?")
-        print(f"[POST]   — IP in config.h matches current PC IP? (run find_server_ip.py)")
+        print("[POST]   network-only - not the backend.  Check:")
+        print(f"[POST]   - ESP32 and this PC on the same WiFi network?")
+        print(f"[POST]   - Windows Firewall blocking inbound on port 8000?")
+        print(f"[POST]   - IP in config.h matches current PC IP? (run find_server_ip.py)")
     except urllib.error.HTTPError as e:
         body = e.read().decode()
-        print(f"[POST] ✗ HTTP {e.code}")
+        print(f"[POST] [X] HTTP {e.code}")
         print(f"[POST]   Response body: {body}")
         print()
         if e.code == 401:
-            print("[POST]   → Device not registered or API key wrong. See DB section above.")
+            print("[POST]   -> Device not registered or API key wrong. See DB section above.")
         elif e.code == 422:
-            print("[POST]   → JSON validation failed (unusual after the serialized() fix).")
-            print("[POST]   → Check the payload format against the VitalsIngest schema.")
+            print("[POST]   -> JSON validation failed (unusual after the serialized() fix).")
+            print("[POST]   -> Check the payload format against the VitalsIngest schema.")
         elif e.code == 500:
-            print("[POST]   → Server-side error.  Check the backend terminal for a traceback.")
+            print("[POST]   -> Server-side error.  Check the backend terminal for a traceback.")
     except Exception as e:
-        print(f"[POST] ✗ Request error: {e}")
+        print(f"[POST] [X] Request error: {e}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────

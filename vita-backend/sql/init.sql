@@ -113,18 +113,44 @@ CREATE TABLE IF NOT EXISTS meal_items (
 -- 6. RECOMMENDATIONS
 -- ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS recommendations (
-    id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    user_id    INT UNSIGNED NOT NULL,
-    type       ENUM('nutrition','activity','health_alert','goal_progress') NOT NULL,
-    severity   ENUM('info','warning','critical') NOT NULL DEFAULT 'info',
-    title      VARCHAR(200) NOT NULL,
-    message    TEXT         NOT NULL,
-    is_read    TINYINT(1)   NOT NULL DEFAULT 0,
-    created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id     INT UNSIGNED NOT NULL,
+    type        ENUM('nutrition','activity','health_alert','goal_progress') NOT NULL,
+    severity    ENUM('info','warning','critical') NOT NULL DEFAULT 'info',
+    tier        ENUM('safety','primary_action','supporting_insight') NOT NULL DEFAULT 'primary_action',
+    rule_id     VARCHAR(100),
+    title       VARCHAR(200) NOT NULL,
+    message     TEXT         NOT NULL,
+    evidence    JSON,
+    action_data JSON,
+    is_read     TINYINT(1)   NOT NULL DEFAULT 0,
+    expires_at  DATETIME,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_rec_user FOREIGN KEY (user_id)
         REFERENCES users (id) ON DELETE CASCADE,
-    INDEX idx_rec_user_time (user_id, created_at)
+    INDEX idx_rec_user_time (user_id, created_at),
+    INDEX idx_rec_user_rule (user_id, rule_id)
 ) ENGINE=InnoDB;
+
+-- ────────────────────────────────────────────────
+-- 7. FOOD FEEDBACK (Active learning corrections)
+-- ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS food_feedback (
+    id                      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id                 INT UNSIGNED NOT NULL,
+    image_url               VARCHAR(500) NOT NULL,
+    predicted_class         VARCHAR(100) NOT NULL,
+    confidence              FLOAT NOT NULL,
+    user_confirmed          TINYINT(1) NOT NULL DEFAULT 0,
+    user_corrected_class    VARCHAR(100),
+    user_portion_multiplier FLOAT NOT NULL DEFAULT 1.0,
+    created_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_feedback_user FOREIGN KEY (user_id)
+        REFERENCES users (id) ON DELETE CASCADE,
+    INDEX idx_feedback_conf (confidence),
+    INDEX idx_feedback_corr (user_corrected_class)
+) ENGINE=InnoDB;
+
 
 -- ────────────────────────────────────────────────
 -- Confirm
@@ -148,7 +174,7 @@ SHOW CREATE TABLE users;
 SHOW TABLES;
 SELECT * FROM google_health_tokens;
 
-Select * from users;
+Select * from vitals;
 show tables;
 
 SELECT * FROM meals

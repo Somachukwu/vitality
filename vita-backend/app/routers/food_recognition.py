@@ -15,9 +15,7 @@ from app.models.user import User
 from app.schemas.meal import MealOut
 
 router = APIRouter(prefix="/food", tags=["food-recognition"])
-
-UPLOADS_DIR = Path(__file__).parent.parent.parent / "uploads" / "meals"
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+UPLOADS_DIR = settings.meals_upload_dir
 
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_BYTES = 25 * 1024 * 1024  # 25 MB
@@ -140,6 +138,10 @@ async def analyze_food_photo(
     else:
         result["image_url"] = f"/uploads/meals/{filename}"
 
+    # Flag uncertain matches (< 55% confidence) for the UI
+    confidence = result.get("confidence", 1.0)
+    result["uncertain_match"] = bool(confidence < 0.55)
+
     return result
 
 
@@ -150,6 +152,8 @@ async def log_meal_from_photo(
     meal_type: str = Form(..., description="breakfast | lunch | dinner | snack"),
     portion_multiplier: float = Form(1.0, description="Scale factor for serving size"),
     food_name: str | None = Form(None, description="Optionally override recognised dish name"),
+    predicted_food_name: str | None = Form(None, description="Original predicted dish name from model"),
+    prediction_confidence: float | None = Form(None, description="Original prediction confidence"),
     notes: str | None = Form(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -157,7 +161,7 @@ async def log_meal_from_photo(
     """
     Step 2 of the meal-logging flow (or call directly to do it in one shot).
 
-    Saves Meal + MealItem → returns saved record instantly using pre-analyzed image_url.
+    Saves Meal + MealItem → records active learning feedback → returns saved record.
     """
     if meal_type not in VALID_MEAL_TYPES:
         raise HTTPException(
@@ -213,6 +217,7 @@ async def log_meal_from_photo(
     pm = portion_multiplier
     now = datetime.now(timezone.utc)
 
+    # 1. Persist Meal & MealItem
     meal = Meal(
         user_id=current_user.id,
         meal_type=meal_type,
@@ -222,6 +227,7 @@ async def log_meal_from_photo(
         total_calories=round(result["calories"] * pm, 1),
         total_carbs=round(result["carbs_g"] * pm, 1),
         total_protein=round(result["protein_g"] * pm, 1),
+        total_fat=round(result["fat_g"] * pm, 1),
     )
     db.add(meal)
     db.flush()
@@ -236,6 +242,24 @@ async def log_meal_from_photo(
         fat=round(result["fat_g"] * pm, 1),
     ))
 
+    # 2. Record Active Learning Feedback if prediction metadata is present
+    if predicted_food_name or final_image_url:
+        from app.models.food_feedback import FoodFeedback
+        pred_class = predicted_food_name or result["food_name"]
+        conf_val = float(prediction_confidence) if prediction_confidence is not None else 1.0
+        corrected_name = result["food_name"] if result["food_name"] != pred_class else None
+
+        db.add(FoodFeedback(
+            user_id=current_user.id,
+            image_url=final_image_url or "",
+            predicted_class=pred_class,
+            confidence=conf_val,
+            user_confirmed=corrected_name is None,
+            user_corrected_class=corrected_name,
+            user_portion_multiplier=pm,
+        ))
+
     db.commit()
     db.refresh(meal)
     return meal
+
