@@ -92,7 +92,7 @@ export function initThemeToggle(btnId = 'theme-btn') {
   if (btn) btn.addEventListener('click', toggleTheme);
 }
 
-export async function compressImage(file, maxDimension = 1920, quality = 0.85) {
+export async function compressImage(file, maxDimension = 1200, quality = 0.80) {
   if (!file || !file.type.startsWith('image/')) return file;
 
   const canvasToBlob = (canvas, q) => {
@@ -150,7 +150,7 @@ export async function compressImage(file, maxDimension = 1920, quality = 0.85) {
       drawSource = img;
     }
 
-    if (sourceWidth <= maxDimension && sourceHeight <= maxDimension && file.size <= 800 * 1024) {
+    if (sourceWidth <= maxDimension && sourceHeight <= maxDimension && file.size <= 300 * 1024) {
       cleanup();
       return file;
     }
@@ -171,13 +171,20 @@ export async function compressImage(file, maxDimension = 1920, quality = 0.85) {
     canvas.width = targetWidth;
     canvas.height = targetHeight;
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
     ctx.drawImage(drawSource, 0, 0, targetWidth, targetHeight);
     cleanup();
 
-    const blob = await canvasToBlob(canvas, quality);
-    if (!blob) return file;
+    let blob = await canvasToBlob(canvas, quality);
+    if (blob && blob.size > 800 * 1024) {
+      const lowerBlob = await canvasToBlob(canvas, 0.65);
+      if (lowerBlob && lowerBlob.size > 0) blob = lowerBlob;
+    }
+
+    if (!blob || blob.size === 0) return file;
 
     const fileName = (file.name || 'photo.jpg').replace(/\.[^/.]+$/, '') + '.jpg';
     return new File([blob], fileName, { type: 'image/jpeg', lastModified: Date.now() });

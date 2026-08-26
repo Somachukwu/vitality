@@ -149,5 +149,3 @@ SHOW TABLES;
 SELECT * FROM google_health_tokens;
 
 Select * from users;
-
-// Test Workflow again
