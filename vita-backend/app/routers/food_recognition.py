@@ -52,6 +52,33 @@ def _validate_image(file: UploadFile) -> None:
         )
 
 
+def _configure_cloudinary() -> bool:
+    if not settings.CLOUDINARY_URL:
+        return False
+    try:
+        import re
+        import cloudinary
+        url = settings.CLOUDINARY_URL.strip()
+        m = re.match(r"^cloudinary://([^:]+):([^@]+)@(.+)$", url)
+        if m:
+            api_key, api_secret, cloud_name = m.groups()
+            cloudinary.config(
+                cloud_name=cloud_name,
+                api_key=api_key,
+                api_secret=api_secret,
+                secure=True
+            )
+            return True
+        else:
+            import os
+            os.environ["CLOUDINARY_URL"] = url
+            cloudinary.config()
+            return True
+    except Exception as e:
+        print("Cloudinary configuration error:", e)
+        return False
+
+
 # ── Schemas returned by this router ──────────────────────────────────────────
 
 class AnalyzeResult:
@@ -151,14 +178,13 @@ async def log_meal_from_photo(
 
     # Determine image URL (Cloudinary or local static endpoint)
     image_url = f"/uploads/meals/{filename}"
-    if settings.CLOUDINARY_URL:
+    if _configure_cloudinary():
         try:
-            import cloudinary
             import cloudinary.uploader
-            cloudinary.config(cloudinary_url=settings.CLOUDINARY_URL)
             res = cloudinary.uploader.upload(str(save_path), folder="vitality_meals")
-            image_url = res.get("secure_url") or image_url
-            save_path.unlink(missing_ok=True)  # Clean up local file after cloud upload
+            if res and "secure_url" in res:
+                image_url = res["secure_url"]
+                save_path.unlink(missing_ok=True)  # Clean up local file after cloud upload
         except Exception as e:
             print("Cloudinary upload failed, falling back to local storage:", e)
 

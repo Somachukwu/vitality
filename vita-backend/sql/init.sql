@@ -149,3 +149,11 @@ SHOW TABLES;
 SELECT * FROM google_health_tokens;
 
 Select * from users;
+show tables;
+
+SELECT * FROM meals
+JOIN users ON meals.user_id = users.id
+WHERE user_id = 8;
+
+DELETE FROM meals
+WHERE user_id = 2;
