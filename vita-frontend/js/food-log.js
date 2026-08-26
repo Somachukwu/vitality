@@ -58,6 +58,7 @@ async function handleFile(f) {
   if (!f || !f.type.startsWith('image/')) {
     return toast('Please select an image file.', 'error');
   }
+  if (optionModal) optionModal.classList.add('hidden');
   let fileToUse = f;
   try {
     fileToUse = await compressImage(f);
