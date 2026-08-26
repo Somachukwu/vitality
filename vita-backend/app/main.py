@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -10,6 +12,26 @@ from app.config import settings
 from app.database import Base, engine
 from app.models import Device, GoogleHealthToken, Meal, MealItem, Recommendation, SleepSession, User, Vitals  # noqa: F401 — ensures all tables are registered
 from app.routers import auth, devices, food_recognition, meals, recommendations, users, vitals, google_health
+
+
+async def _warmup_model_task():
+    """Background task: pre-warm food recognition AI model in RAM without blocking server boot."""
+    def _warmup():
+        try:
+            from food_cv.inference import _load_model
+            _load_model()
+            print("INFO: Food recognition AI model pre-warmed in RAM.")
+        except Exception as exc:
+            print("NOTICE: Food recognition model warmup skipped:", exc)
+
+    await asyncio.to_thread(_warmup)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Pre-warm AI model asynchronously on startup so first request has zero cold-start delay
+    asyncio.create_task(_warmup_model_task())
+    yield
 
 
 def _run_migrations():
@@ -66,6 +88,7 @@ app = FastAPI(
     title="Vita API",
     description="Backend API for the Pulse Pixel Guide (Vita) health monitoring app",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
