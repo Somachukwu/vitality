@@ -45,12 +45,12 @@ def _run_migrations():
         if "vitals" in inspector.get_table_names():
             cols = {c["name"] for c in inspector.get_columns("vitals")}
             new_vitals_cols = {
-                "calories_burned": "FLOAT NULL COMMENT 'kcal — from Google Fit'",
-                "distance_km":     "FLOAT NULL COMMENT 'km — from Google Fit'",
-                "floors":          "INT NULL COMMENT 'floors climbed — from Google Fit'",
-                "active_minutes":  "INT NULL COMMENT 'active zone minutes — from Google Fit'",
+                "calories_burned": "FLOAT NULL COMMENT 'kcal — from Google Health'",
+                "distance_km":     "FLOAT NULL COMMENT 'km — from Google Health'",
+                "floors":          "INT NULL COMMENT 'floors climbed — from Google Health'",
+                "active_minutes":  "INT NULL COMMENT 'active zone minutes — from Google Health'",
                 "body_fat_pct":    "FLOAT NULL COMMENT '% — from smart scale'",
-                "source":          "VARCHAR(50) NULL COMMENT 'google_fit | station | NULL'",
+                "source":          "VARCHAR(50) NULL COMMENT 'google_health | station | NULL'",
             }
             for col_name, col_def in new_vitals_cols.items():
                 if col_name not in cols:

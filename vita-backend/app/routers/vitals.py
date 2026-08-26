@@ -77,7 +77,7 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
     Daily aggregate metrics (steps, calories, distance, active_minutes):
         → today's values ONLY — yesterday's steps must never bleed into today.
         → treats 0 the same as None to prevent ESP32 zeros from overriding
-          Google Fit's real values.
+          Google Health's real values.
     """
     today_start = datetime.now(timezone.utc).replace(
         hour=0, minute=0, second=0, microsecond=0, tzinfo=None
@@ -132,7 +132,7 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
         for rec in today_records:
             val = getattr(rec, field, None)
             # Treat 0 as "no data" for daily aggregates — prevents ESP32
-            # pushing steps=0 from overriding real Google Fit step counts
+            # pushing steps=0 from overriding real Google Health step counts
             if val is not None and val > 0:
                 if best is None or val > best:
                     best = val
@@ -229,7 +229,7 @@ def sync_all(
     Called by the dashboard sync button so users get a single action that
     pulls latest data from Google AND refreshes the display.
     """
-    from app.services.google_fit_service import sync_google_fit
+    from app.services.google_health_service import sync_google_health
     from app.models.google_health_token import GoogleHealthToken
 
     google_synced = False
@@ -243,7 +243,7 @@ def sync_all(
     ).first()
 
     if token_row:
-        result = sync_google_fit(
+        result = sync_google_health(
             user_id=current_user.id, db=db, hours_back=24
         )
         google_synced = True

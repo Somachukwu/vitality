@@ -13,7 +13,7 @@ class Vitals(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     device_id: Mapped[int | None] = mapped_column(ForeignKey("devices.id", ondelete="SET NULL"), nullable=True)
 
-    # --- Wearable / Google Fit metrics ---
+    # --- Wearable / Google Health metrics ---
     heart_rate: Mapped[float | None] = mapped_column(Float, nullable=True)         # bpm
     spo2: Mapped[float | None] = mapped_column(Float, nullable=True)               # %
     steps: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -29,7 +29,7 @@ class Vitals(Base):
     humidity: Mapped[float | None] = mapped_column(Float, nullable=True)           # % — environmental, from station
 
     # --- Data source tag ---
-    # "google_fit" = synced from Google Fit API | NULL or "station" = pushed by hardware device
+    # "google_health" = synced from Google Health API | NULL or "station" = pushed by hardware device
     source: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     recorded_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)

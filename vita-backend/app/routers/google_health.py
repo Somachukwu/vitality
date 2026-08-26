@@ -6,12 +6,11 @@ Endpoints:
   GET    /api/auth/google             — Initiate OAuth: read nonce from session, redirect to Google
   GET    /api/auth/google/callback   — Receive OAuth code, exchange for tokens, persist, redirect to frontend
   GET    /api/auth/google/status     — Return connection status for the current Vita user
-  POST   /api/auth/google/sync       — On-demand Google Fit data sync
+  POST   /api/auth/google/sync       — On-demand Google Health data sync
   DELETE /api/auth/google/disconnect — Revoke and delete stored tokens
 """
 
 import os
-import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -22,19 +21,16 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.dependencies import get_current_user
 from app.core.encryption import decrypt, encrypt
-from app.core.security import decode_token
 from app.database import get_db
 from app.models.google_health_token import GoogleHealthToken
 from app.models.user import User
 from app.schemas.google_health import GoogleHealthStatusOut, GoogleHealthSyncOut
-from app.services.google_fit_service import sync_google_fit
+from app.services.google_health_service import sync_google_health
 
 # Allow HTTP in development only — must NOT be set in production
 if settings.APP_ENV == "development":
     os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
-# Relax token scope checks — Google Fit frequently expands scopes dynamically
-os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
 
 router = APIRouter(
     prefix="/auth/google",
@@ -42,23 +38,13 @@ router = APIRouter(
 )
 
 # ── OAuth scopes ──────────────────────────────────────────────────────────────
-# Google Fit REST API scopes — web-accessible, populated by Fitbit Charge 6 via Google Health Connect.
-# NOTE: If Google Fit REST API is retired, swap these scopes and update google_fit_service.py only.
 GOOGLE_SCOPES = [
     "openid",
     "email",
     # Google Health API (v4 - Fitbit & Health Connect successor)
     "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
     "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
-    "https://www.googleapis.com/auth/googlehealth.location.readonly",
-    # Google Fit API (legacy compatibility)
-    "https://www.googleapis.com/auth/fitness.activity.read",
-    "https://www.googleapis.com/auth/fitness.heart_rate.read",
-    "https://www.googleapis.com/auth/fitness.body.read",
-    "https://www.googleapis.com/auth/fitness.oxygen_saturation.read",
-    "https://www.googleapis.com/auth/fitness.sleep.read",
-    "https://www.googleapis.com/auth/fitness.body_temperature.read",
-    "https://www.googleapis.com/auth/fitness.location.read",
+    "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
 ]
 
 # ── Frontend redirect after successful connection ──────────────────────────────
@@ -267,11 +253,11 @@ def google_health_sync(
     db: Session = Depends(get_db),
 ):
     """
-    Triggers an on-demand Google Fit data sync for the last 24 hours.
+    Triggers an on-demand Google Health data sync for the last 24 hours.
     Inserts new Vitals rows and SleepSession rows.
-    Weight is never synced from Google Fit — it comes from the smart scale only.
+    Weight is never synced from Google Health — it comes from the smart scale only.
     """
-    result = sync_google_fit(user_id=current_user.id, db=db, hours_back=24)
+    result = sync_google_health(user_id=current_user.id, db=db, hours_back=24)
     return GoogleHealthSyncOut(
         synced_count=result["synced_count"],
         sleep_sessions_synced=result["sleep_sessions_synced"],

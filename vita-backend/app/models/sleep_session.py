@@ -19,7 +19,7 @@ class SleepSession(Base):
     deep_min = mapped_column(Integer, nullable=True)
     rem_min = mapped_column(Integer, nullable=True)
     awake_min = mapped_column(Integer, nullable=True)
-    source = mapped_column(String(50), nullable=True, default='google_fit')
+    source = mapped_column(String(50), nullable=True, default='google_health')
     created_at = mapped_column(DateTime, server_default=func.now())
 
     user = relationship('User', back_populates='sleep_sessions')
