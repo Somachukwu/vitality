@@ -174,6 +174,8 @@ SHOW CREATE TABLE users;
 SHOW TABLES;
 SELECT * FROM google_health_tokens;
 
+SELECT * FROM sleep_sessions;
+
 Select * from vitals;
 show tables;
 

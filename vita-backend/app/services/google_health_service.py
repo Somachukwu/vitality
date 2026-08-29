@@ -126,10 +126,12 @@ def _daily_rollup(headers: dict[str, str], data_type: str, start: datetime, end:
         return None
 
 
-def _list_data_points(headers: dict[str, str], data_type: str, filter_expression: str, page_size: int = 100) -> list[dict[str, Any]]:
+def _list_data_points(headers: dict[str, str], data_type: str, filter_expression: str = "", page_size: int = 100) -> list[dict[str, Any]]:
     """List matching data points and follow any pagination token."""
     url = f"{_HEALTH_BASE}/dataTypes/{data_type}/dataPoints"
-    params: dict[str, Any] = {"pageSize": page_size, "filter": filter_expression}
+    params: dict[str, Any] = {"pageSize": page_size}
+    if filter_expression:
+        params["filter"] = filter_expression
     points: list[dict[str, Any]] = []
     try:
         while True:
@@ -230,16 +232,38 @@ def _sync_sleep_sessions(user_id: int, db: Session, headers: dict[str, str], sta
         if not sleep_start or not sleep_end or sleep_end <= sleep_start:
             continue
         summary = sleep.get("summary", {})
-        duration = _as_number(summary.get("minutesInSleepPeriod"))
+        duration = _as_number(summary.get("minutesInSleepPeriod") or summary.get("duration") or sleep.get("duration"))
         duration_min = int(duration) if duration is not None else int((sleep_end - sleep_start).total_seconds() // 60)
-        stages = {stage.get("type"): int(_as_number(stage.get("minutes")) or 0) for stage in summary.get("stagesSummary", [])}
+
+        # Extract sleep stages (try stagesSummary first, then individual stages list)
+        stages: dict[str, int] = {}
+        for stage in (summary.get("stagesSummary") or sleep.get("stagesSummary") or []):
+            st_type = stage.get("type")
+            mins = _as_number(stage.get("minutes"))
+            if st_type and mins is not None:
+                stages[st_type] = int(mins)
+
+        if not stages:
+            for stage in (sleep.get("stages") or summary.get("stages") or []):
+                st_type = stage.get("type")
+                if not st_type:
+                    continue
+                s_st = _parse_google_datetime(stage.get("startTime"))
+                s_et = _parse_google_datetime(stage.get("endTime"))
+                if s_st and s_et and s_et > s_st:
+                    mins = int((s_et - s_st).total_seconds() // 60)
+                    stages[st_type] = stages.get(st_type, 0) + mins
+
+        # Attribute sleep date to the morning you wake up (sleep_end), or fallback to start
+        sleep_session_date = (sleep_end or sleep_start).date()
+
         existing = db.query(SleepSession).filter(
             SleepSession.user_id == user_id,
-            SleepSession.sleep_date == sleep_start.date(),
+            SleepSession.sleep_date == sleep_session_date,
             SleepSession.source == _SOURCE,
         ).first()
         if not existing:
-            existing = SleepSession(user_id=user_id, sleep_date=sleep_start.date(), source=_SOURCE)
+            existing = SleepSession(user_id=user_id, sleep_date=sleep_session_date, source=_SOURCE)
             db.add(existing)
             created += 1
         existing.sleep_start = sleep_start
