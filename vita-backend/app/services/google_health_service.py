@@ -190,6 +190,18 @@ def _fetch_latest_metrics(headers: dict[str, str], start: datetime, end: datetim
         value = _latest_value(points, data_key, value_key)
         if value is not None:
             metrics[vital_field] = round(value, 1)
+
+    # Fallback for SpO2: Most consumer wearables (Fitbit, Pixel Watch) record SpO2
+    # overnight during sleep as daily-oxygen-saturation rather than intraday points
+    if "spo2" not in metrics:
+        daily_points = _list_data_points(headers, "daily-oxygen-saturation", "", page_size=10)
+        for point in daily_points:
+            daily_data = point.get("dailyOxygenSaturation", {})
+            val = _as_number(daily_data.get("averagePercentage") or daily_data.get("percentage") or daily_data.get("lowerBoundPercentage"))
+            if val is not None:
+                metrics["spo2"] = round(val, 1)
+                break
+
     return metrics
 
 
