@@ -36,6 +36,9 @@ class VitalsOut(BaseModel):
 class VitalsLatestOut(VitalsOut):
     device_name: str | None = None
     last_google_sync: datetime | None = None
+    sleep_score: int | None = None
+    sleep_duration_min: int | None = None
+    sleep_date: date | None = None
 
 
 class VitalsDailySummary(BaseModel):
@@ -51,6 +54,14 @@ class VitalsDailySummary(BaseModel):
     calories_burned: float | None = None
     distance_km: float | None = None
     active_minutes: int | None = None
+    floors: int | None = None
+    # Sleep session on that date
+    sleep_duration_min: int | None = None
+    sleep_score: int | None = None
+    light_min: int | None = None
+    deep_min: int | None = None
+    rem_min: int | None = None
+    awake_min: int | None = None
 
 
 class SyncAllOut(BaseModel):

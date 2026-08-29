@@ -25,8 +25,19 @@ export function vitalsStatus(metric, value) {
       if (value > 38.0) return 'red';
       if (value < 36.1 || value > 37.5) return 'amber';
       return 'green';
+    case 'sleepScore':
+      if (value < 60) return 'red';
+      if (value < 75) return 'amber';
+      return 'green';
     default: return 'green';
   }
+}
+
+export function formatSleepDuration(mins) {
+  if (!mins || mins <= 0) return '';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 export function statusDot(status, customLabel) {

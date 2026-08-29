@@ -57,6 +57,57 @@ function makeBarChart(id, label, data, color) {
   });
 }
 
+function makeSleepChart(id, sleepHistory) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+
+  const labels = sleepHistory.map(h => dateLabel(h.date));
+  const hasStages = sleepHistory.some(h => (h.deep_min || 0) + (h.rem_min || 0) + (h.light_min || 0) > 0);
+
+  if (hasStages) {
+    charts[id] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Deep (h)',  data: sleepHistory.map(h => Number(((h.deep_min || 0) / 60).toFixed(2))),  backgroundColor: '#312E81' },
+          { label: 'REM (h)',   data: sleepHistory.map(h => Number(((h.rem_min || 0) / 60).toFixed(2))),   backgroundColor: '#6366F1' },
+          { label: 'Light (h)', data: sleepHistory.map(h => Number(((h.light_min || 0) / 60).toFixed(2))), backgroundColor: '#93C5FD' },
+          { label: 'Awake (h)', data: sleepHistory.map(h => Number(((h.awake_min || 0) / 60).toFixed(2))), backgroundColor: '#CBD5E1' },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: true, position: 'top', labels: { font: { family: 'DM Sans', size: 11 }, boxWidth: 10 } } },
+        scales: {
+          x: { stacked: true, ticks: { maxTicksLimit: 10, font: { family: 'JetBrains Mono', size: 10 } }, grid: { display: false } },
+          y: { stacked: true, ticks: { font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
+        },
+        animation: { duration: 700 },
+      },
+    });
+  } else {
+    const totalHours = sleepHistory.map(h => Number(((h.sleep_duration_min || 0) / 60).toFixed(2)));
+    charts[id] = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ label: 'Sleep (hours)', data: totalHours, backgroundColor: '#6366F1AA', borderColor: '#6366F1', borderWidth: 1, borderRadius: 4 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 10, font: { family: 'JetBrains Mono', size: 10 } }, grid: { display: false } },
+          y: { ticks: { font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: 'rgba(0,0,0,0.05)' }, beginAtZero: true },
+        },
+        animation: { duration: 700 },
+      },
+    });
+  }
+}
+
 function dateLabel(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -88,16 +139,29 @@ async function render(days) {
     makeChart('c-temp', 'Temperature', tempData, '#D97706');
     makeChart('c-wt',   'Weight',      wtData,   '#1B4332');
 
-    // Daily aggregate bar charts
-    const stepsData = history.filter(h => h.steps != null).map(h => ({ label: dateLabel(h.date), value: h.steps }));
-    const calData   = history.filter(h => h.calories_burned != null).map(h => ({ label: dateLabel(h.date), value: h.calories_burned }));
-    const distData  = history.filter(h => h.distance_km != null).map(h => ({ label: dateLabel(h.date), value: h.distance_km }));
+    // Sleep history & stages
+    const sleepHistory = history.filter(h => h.sleep_duration_min != null && h.sleep_duration_min > 0);
+    if (sleepHistory.length) {
+      makeSleepChart('c-sleep', sleepHistory);
+    } else {
+      const el = document.getElementById('c-sleep');
+      if (el) el.parentElement.innerHTML = '<div class="center muted text-sm">No sleep records for this period.</div>';
+    }
 
-    makeBarChart('c-steps', 'Steps',    stepsData, '#6366F1');
-    makeBarChart('c-cal',   'Calories', calData,   '#EF4444');
-    makeBarChart('c-dist',  'Distance', distData,  '#10B981');
+    // Daily aggregate bar charts
+    const stepsData  = history.filter(h => h.steps != null).map(h => ({ label: dateLabel(h.date), value: h.steps }));
+    const distData   = history.filter(h => h.distance_km != null).map(h => ({ label: dateLabel(h.date), value: h.distance_km }));
+    const calData    = history.filter(h => h.calories_burned != null).map(h => ({ label: dateLabel(h.date), value: h.calories_burned }));
+    const activeData = history.filter(h => h.active_minutes != null).map(h => ({ label: dateLabel(h.date), value: h.active_minutes }));
+    const floorsData = history.filter(h => h.floors != null).map(h => ({ label: dateLabel(h.date), value: h.floors }));
+
+    makeBarChart('c-steps',  'Steps',          stepsData,  '#6366F1');
+    makeBarChart('c-dist',   'Distance',       distData,   '#10B981');
+    makeBarChart('c-cal',    'Calories',       calData,    '#EF4444');
+    makeBarChart('c-active', 'Active minutes', activeData, '#F59E0B');
+    makeBarChart('c-floors', 'Floors',         floorsData, '#8B5CF6');
   } else {
-    ['c-hr', 'c-spo2', 'c-temp', 'c-wt', 'c-steps', 'c-cal', 'c-dist'].forEach((id) => {
+    ['c-hr', 'c-spo2', 'c-sleep', 'c-active', 'c-temp', 'c-wt', 'c-steps', 'c-cal', 'c-dist', 'c-floors'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.parentElement.innerHTML = '<div class="center muted text-sm">Chart unavailable.</div>';
     });

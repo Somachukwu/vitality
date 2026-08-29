@@ -1,6 +1,6 @@
 import { requireAuth, getUser, saveUser } from './auth.js';
 import { renderNav } from './nav.js';
-import { countUp, vitalsStatus, statusDot, formatTime, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart, computeBmi, bmiStatus } from './utils.js';
+import { countUp, vitalsStatus, statusDot, formatTime, formatSleepDuration, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart, computeBmi, bmiStatus } from './utils.js';
 import { api, resolveApiUrl } from './api.js';
 
 applyStoredTheme();
@@ -16,15 +16,17 @@ let macrosChart = null;
 // Map snake_case API response to camelCase expected by render functions
 function adaptVitals(v) {
   return {
-    heartRate:      v.heart_rate,
-    spo2:           v.spo2,
-    temperature:    v.temperature,
-    caloriesBurned: v.calories_burned,
-    weight:         v.weight,
-    steps:          v.steps,
-    distanceKm:     v.distance_km,
-    timestamp:      v.recorded_at,
-    lastGoogleSync: v.last_google_sync,
+    heartRate:        v.heart_rate,
+    spo2:             v.spo2,
+    sleepScore:       v.sleep_score,
+    sleepDurationMin: v.sleep_duration_min,
+    sleepDate:        v.sleep_date,
+    caloriesBurned:   v.calories_burned,
+    weight:           v.weight,
+    steps:            v.steps,
+    distanceKm:       v.distance_km,
+    timestamp:        v.recorded_at,
+    lastGoogleSync:   v.last_google_sync,
   };
 }
 
@@ -56,17 +58,28 @@ function renderVitals(v) {
     }
   };
 
-  safeCountUp('v-hr',         v.heartRate, 0);
-  safeCountUp('v-spo2',       v.spo2, 1);
-  safeCountUp('v-temp',       v.temperature, 1);
-  safeCountUp('v-cal-burned', v.caloriesBurned, 0);
-  safeCountUp('v-steps',      v.steps, 0);
-  safeCountUp('v-dist',       v.distanceKm, 1);
-  safeCountUp('v-wt',         v.weight, 1);
+  safeCountUp('v-hr',          v.heartRate, 0);
+  safeCountUp('v-spo2',        v.spo2, 1);
+  safeCountUp('v-sleep-score', v.sleepScore, 0);
+  safeCountUp('v-cal-burned',  v.caloriesBurned, 0);
+  safeCountUp('v-steps',       v.steps, 0);
+  safeCountUp('v-dist',        v.distanceKm, 1);
+  safeCountUp('v-wt',          v.weight, 1);
 
   document.getElementById('s-hr').innerHTML   = statusDot(vitalsStatus('heartRate',   v.heartRate));
   document.getElementById('s-spo2').innerHTML = statusDot(vitalsStatus('spo2',        v.spo2));
-  document.getElementById('s-temp').innerHTML = statusDot(vitalsStatus('temperature', v.temperature));
+  
+  const sleepEl = document.getElementById('s-sleep-score');
+  if (sleepEl) {
+    if (v.sleepScore != null) {
+      const durStr = formatSleepDuration(v.sleepDurationMin);
+      const status = vitalsStatus('sleepScore', v.sleepScore);
+      const label = v.sleepScore >= 85 ? 'Excellent' : v.sleepScore >= 75 ? 'Good' : v.sleepScore >= 60 ? 'Fair' : 'Short / Poor';
+      sleepEl.innerHTML = statusDot(status, durStr ? `${durStr} · ${label}` : label);
+    } else {
+      sleepEl.innerHTML = '<span class="text-xs muted">No sleep logged</span>';
+    }
+  }
   
   const syncTime = v.lastGoogleSync || v.timestamp;
   document.getElementById('last-sync').textContent = syncTime ? 'Last synced ' + formatTime(syncTime) : 'No sync data yet';

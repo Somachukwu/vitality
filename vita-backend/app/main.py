@@ -62,13 +62,47 @@ async def _keep_alive_task():
             print(f"NOTICE: Keep-alive ping error: {exc}")
 
 
+async def _google_health_auto_sync_task():
+    """Background task: periodically syncs Google Health data for active users every 15 minutes."""
+    await asyncio.sleep(30)
+    print("INFO: Google Health periodic auto-sync service active (every 15m).")
+
+    while True:
+        try:
+            def _sync_all_users():
+                from app.database import SessionLocal
+                from app.models.google_health_token import GoogleHealthToken
+                from app.services.google_health_service import sync_google_health
+
+                db = SessionLocal()
+                try:
+                    active_tokens = db.query(GoogleHealthToken).filter(GoogleHealthToken.is_active == True).all()
+                    for token in active_tokens:
+                        try:
+                            sync_google_health(user_id=token.user_id, db=db, hours_back=24)
+                        except Exception as exc:
+                            print(f"NOTICE: Auto-sync failed for user_id={token.user_id}: {exc}")
+                finally:
+                    db.close()
+
+            await asyncio.to_thread(_sync_all_users)
+            await asyncio.sleep(15 * 60)  # Wait 15 minutes
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            print(f"NOTICE: Google Health auto-sync background task error: {exc}")
+            await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Pre-warm AI model asynchronously on startup so first request has zero cold-start delay
     asyncio.create_task(_warmup_model_task())
     keep_alive = asyncio.create_task(_keep_alive_task())
+    auto_sync = asyncio.create_task(_google_health_auto_sync_task())
     yield
     keep_alive.cancel()
+    auto_sync.cancel()
 
 
 def _run_migrations():
