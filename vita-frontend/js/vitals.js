@@ -194,20 +194,5 @@ async function render(days) {
 }
 
 document.getElementById('range').addEventListener('change', (e) => render(Number(e.target.value)));
-document.getElementById('sync').addEventListener('click', async () => {
-  const btn = document.getElementById('sync');
-  btn.disabled = true;
-  btn.textContent = 'Syncing…';
-  try {
-    await api.post('/vitals/sync-all', {});
-    await render(Number(document.getElementById('range').value));
-    toast('Data synced successfully');
-  } catch {
-    toast('Sync failed', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="refresh-cw"></i> Sync';
-    if (window.lucide) window.lucide.createIcons();
-  }
-});
 render(7);
+

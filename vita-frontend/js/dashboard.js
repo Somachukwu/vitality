@@ -105,18 +105,9 @@ function renderRec(rec) {
   const badgeEl = document.getElementById('rec-badge');
   if (!textEl) return;
 
-  // Criticality Indicator Badge (Card background/border remains unaffected)
   if (badgeEl) {
-    if (rec.severity === 'critical' || rec.tier === 'safety') {
-      badgeEl.innerHTML = '<i data-lucide="shield-alert"></i> Critical Notice';
-      badgeEl.style.color = '#ef4444';
-    } else if (rec.severity === 'warning') {
-      badgeEl.innerHTML = '<i data-lucide="alert-triangle"></i> Attention';
-      badgeEl.style.color = '#f59e0b';
-    } else {
-      badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Today\'s tip';
-      badgeEl.style.color = '';
-    }
+    badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Today\'s tip';
+    badgeEl.style.color = '';
   }
 
   const titleHtml = rec.title ? `<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">${rec.title}</strong>` : '';
@@ -127,9 +118,9 @@ function renderRec(rec) {
     const rawRoute = rec.action_data?.route || '';
     const cleanRoute = rawRoute.replace(/^\//, '');
     if (cleanRoute) {
-      actionBtn = `<a href="${cleanRoute}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.25rem 0.6rem; border:1px solid currentColor; border-radius:999px; display:inline-flex; align-items:center; gap:0.25rem">${rec.action_data.action_label || 'View Details'} →</a>`;
+      actionBtn = `<a href="${cleanRoute}" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">${rec.action_data.action_label || 'View Details'} →</a>`;
     }
-    const viewAllLink = `<a href="recommendations.html" class="text-xs muted" style="text-decoration:underline">All insights</a>`;
+    const viewAllLink = `<a href="recommendations.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">All insights</a>`;
     triggerEl.innerHTML = `<div class="row between align-center mt-2">${actionBtn || '<span></span>'}${viewAllLink}</div>`;
   }
 }
@@ -148,9 +139,10 @@ function renderRecFallback() {
   textEl.innerHTML = '<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">Log your meals today</strong><span>You haven\'t logged any meals yet today. Log your meals to track your daily nutrition and generate personalized insights.</span>';
 
   if (triggerEl) {
-    triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="food-log.html" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.25rem 0.6rem; border:1px solid currentColor; border-radius:999px; display:inline-flex; align-items:center; gap:0.25rem">Log Meal →</a><a href="recommendations.html" class="text-xs muted" style="text-decoration:underline">All insights</a></div>';
+    triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="food-log.html" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">Log Meal →</a><a href="recommendations.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">All insights</a></div>';
   }
 }
+
 
 
 
@@ -263,9 +255,11 @@ loadAll();
 
 async function syncNow(btn) {
   const label = btn.querySelector('span') || btn;
+  const icon = btn.querySelector('i, svg');
   const originalText = label.textContent;
   btn.disabled = true;
   label.textContent = 'Syncing…';
+  if (icon) icon.classList.add('spin');
   try {
     // Trigger Google Health sync + get fresh vitals in one call
     const result = await api.post('/vitals/sync-all', {});
@@ -285,8 +279,10 @@ async function syncNow(btn) {
   } finally {
     btn.disabled = false;
     label.textContent = originalText;
+    if (icon) icon.classList.remove('spin');
   }
 }
+
 
 document.getElementById('sync-btn').addEventListener('click', (e) => syncNow(e.currentTarget));
 document.getElementById('sync-btn-2').addEventListener('click', (e) => syncNow(e.currentTarget));

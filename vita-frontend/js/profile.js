@@ -19,6 +19,47 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
 
 let profile = {};
 let devices = [];
+let lastCalculatedRec = null;
+
+function computeSmartTargets() {
+  const weight = Number(document.getElementById('weightKg')?.value || profile.weight || 70);
+  const height = Number(document.getElementById('heightCm')?.value || profile.height || 170);
+  const age = Number(document.getElementById('age')?.value || profile.age || 30);
+  const sex = (document.getElementById('sex')?.value || profile.sex || 'male').toLowerCase();
+  const goal = document.getElementById('goal')?.value || profile.goal_type || 'maintenance';
+
+  // Mifflin-St Jeor Equation for BMR
+  let bmr = 10 * weight + 6.25 * height - 5 * age;
+  if (sex === 'female') {
+    bmr -= 161;
+  } else {
+    bmr += 5;
+  }
+
+  // Moderate physical activity baseline (1.45 multiplier)
+  const tdee = Math.round(bmr * 1.45);
+  let recommendedCal = tdee;
+  let rationale = '';
+
+  if (goal === 'weight_loss') {
+    const floor = sex === 'female' ? 1200 : 1500;
+    recommendedCal = Math.max(floor, tdee - 500);
+    const proteinG = Math.round(weight * 1.6);
+    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and active baseline (TDEE ~${tdee} kcal), a safe 500 kcal deficit targets <strong>${recommendedCal} kcal/day</strong> with <strong>~${proteinG}g protein</strong> to promote fat loss while preserving muscle.`;
+  } else if (goal === 'weight_gain') {
+    recommendedCal = tdee + 300;
+    const proteinG = Math.round(weight * 1.8);
+    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and active baseline (TDEE ~${tdee} kcal), a controlled surplus targets <strong>${recommendedCal} kcal/day</strong> with <strong>~${proteinG}g protein</strong> for muscle building.`;
+  } else {
+    const proteinG = Math.round(weight * 1.2);
+    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and active baseline (TDEE ~${tdee} kcal), maintaining weight targets <strong>${recommendedCal} kcal/day</strong> with <strong>~${proteinG}g protein</strong> for vitality and metabolic balance.`;
+  }
+
+  lastCalculatedRec = recommendedCal;
+  const descEl = document.getElementById('smart-calc-desc');
+  if (descEl) descEl.innerHTML = rationale;
+  return recommendedCal;
+}
 
 async function loadProfile() {
   try {
@@ -30,9 +71,12 @@ async function loadProfile() {
     set('heightCm',  profile.height);
     set('weightKg',  profile.weight);
     set('cal',       profile.daily_calorie_target);
-    set('goal',      profile.goal_type);
+    set('goal',      profile.goal_type || 'maintenance');
     set('diet',      (profile.dietary_restrictions || []).join(', '));
     set('health',    (profile.health_conditions || []).join(', '));
+
+    computeSmartTargets();
+
     const notifPref = profile.notification_preferences || {};
     const pushEl  = document.getElementById('notif-push');
     const emailEl = document.getElementById('notif-email');
@@ -43,58 +87,150 @@ async function loadProfile() {
   }
 }
 
-const editableFields = () => document.querySelectorAll('#profile-form input:not(#email), #profile-form select');
-let snapshot = {};
+// Personal details edit state
+const personalFields = () => document.querySelectorAll('#profile-form input:not(#email), #profile-form select');
+let personalSnapshot = {};
 
-function captureSnapshot() { editableFields().forEach(f => { snapshot[f.id] = f.value; }); }
-function restoreSnapshot() { editableFields().forEach(f => { if (f.id in snapshot) f.value = snapshot[f.id]; }); }
+function capturePersonalSnapshot() {
+  personalFields().forEach(f => { personalSnapshot[f.id] = f.value; });
+}
+function restorePersonalSnapshot() {
+  personalFields().forEach(f => { if (f.id in personalSnapshot) f.value = personalSnapshot[f.id]; });
+}
 
-function setEditMode(editing) {
+function setPersonalEditMode(editing) {
   const form = document.getElementById('profile-form');
-  editableFields().forEach(f => { f.disabled = !editing; });
+  personalFields().forEach(f => { f.disabled = !editing; });
   form.classList.toggle('profile-readonly', !editing);
   document.getElementById('edit-btn').classList.toggle('hidden', editing);
   document.getElementById('form-actions').classList.toggle('hidden', !editing);
   if (editing) initLucide();
 }
 
-setEditMode(false);
+// Goals edit state
+const goalsFields = () => document.querySelectorAll('#goals-form input, #goals-form select');
+let goalsSnapshot = {};
+
+function captureGoalsSnapshot() {
+  goalsFields().forEach(f => { goalsSnapshot[f.id] = f.value; });
+}
+function restoreGoalsSnapshot() {
+  goalsFields().forEach(f => { if (f.id in goalsSnapshot) f.value = goalsSnapshot[f.id]; });
+}
+
+function setGoalsEditMode(editing) {
+  const form = document.getElementById('goals-form');
+  goalsFields().forEach(f => { f.disabled = !editing; });
+  form.classList.toggle('profile-readonly', !editing);
+  document.getElementById('edit-goals-btn').classList.toggle('hidden', editing);
+  document.getElementById('goals-actions').classList.toggle('hidden', !editing);
+  document.getElementById('apply-rec-btn').classList.toggle('hidden', !editing);
+  if (editing) initLucide();
+}
+
+setPersonalEditMode(false);
+setGoalsEditMode(false);
 loadProfile();
 loadDevices();
 
-document.getElementById('edit-btn').addEventListener('click', () => { captureSnapshot(); setEditMode(true); });
-document.getElementById('cancel-btn').addEventListener('click', () => { restoreSnapshot(); setEditMode(false); });
+// Personal details listeners
+document.getElementById('edit-btn').addEventListener('click', () => {
+  capturePersonalSnapshot();
+  setPersonalEditMode(true);
+});
+document.getElementById('cancel-btn').addEventListener('click', () => {
+  restorePersonalSnapshot();
+  setPersonalEditMode(false);
+  computeSmartTargets();
+});
 
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const get = (id) => document.getElementById(id)?.value ?? '';
-  const btn = document.getElementById('save-btn') || e.submitter;
+  const btn = e.submitter || document.querySelector('#form-actions button[type="submit"]');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   try {
     const payload = {
-      name:                    get('name').trim() || undefined,
-      age:                     Number(get('age')) || undefined,
-      sex:                     get('sex') || undefined,
-      height:                  Number(get('heightCm')) || undefined,
-      weight:                  Number(get('weightKg')) || undefined,
-      daily_calorie_target:    Number(get('cal')) || undefined,
-      goal_type:               get('goal') || undefined,
-      dietary_restrictions:    get('diet').split(',').map(s => s.trim()).filter(Boolean),
-      health_conditions:       get('health').split(',').map(s => s.trim()).filter(Boolean),
-      notification_preferences: {
-        push:  document.getElementById('notif-push')?.checked  ?? true,
-        email: document.getElementById('notif-email')?.checked ?? false,
-      },
+      name:                 get('name').trim() || undefined,
+      age:                  Number(get('age')) || undefined,
+      sex:                  get('sex') || undefined,
+      height:               Number(get('heightCm')) || undefined,
+      weight:               Number(get('weightKg')) || undefined,
+      dietary_restrictions: get('diet').split(',').map(s => s.trim()).filter(Boolean),
+      health_conditions:    get('health').split(',').map(s => s.trim()).filter(Boolean),
     };
     profile = await api.put('/users/profile', payload);
-    setEditMode(false);
-    toast('Profile updated');
+    setPersonalEditMode(false);
+    computeSmartTargets();
+    toast('Personal details updated');
   } catch (err) {
     toast('Could not save: ' + err.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
   }
 });
+
+// Goals listeners
+document.getElementById('edit-goals-btn').addEventListener('click', () => {
+  captureGoalsSnapshot();
+  setGoalsEditMode(true);
+  computeSmartTargets();
+});
+document.getElementById('cancel-goals-btn').addEventListener('click', () => {
+  restoreGoalsSnapshot();
+  setGoalsEditMode(false);
+  computeSmartTargets();
+});
+
+document.getElementById('goal').addEventListener('change', () => {
+  computeSmartTargets();
+});
+
+document.getElementById('apply-rec-btn').addEventListener('click', () => {
+  if (lastCalculatedRec) {
+    document.getElementById('cal').value = lastCalculatedRec;
+    toast(`Applied recommended target: ${lastCalculatedRec} kcal`);
+  }
+});
+
+document.getElementById('goals-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const get = (id) => document.getElementById(id)?.value ?? '';
+  const btn = e.submitter || document.querySelector('#goals-actions button[type="submit"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const payload = {
+      goal_type:            get('goal') || undefined,
+      daily_calorie_target: Number(get('cal')) || undefined,
+    };
+    profile = await api.put('/users/profile', payload);
+    setGoalsEditMode(false);
+    computeSmartTargets();
+    toast('Targets updated');
+  } catch (err) {
+    toast('Could not save targets: ' + err.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Save targets'; }
+  }
+});
+
+// Active Notification Preference Listeners
+async function saveNotificationPreferences() {
+  try {
+    const push = document.getElementById('notif-push')?.checked ?? true;
+    const email = document.getElementById('notif-email')?.checked ?? false;
+    await api.put('/users/profile', {
+      notification_preferences: { push, email },
+    });
+    toast('Notification preferences saved');
+  } catch (err) {
+    toast('Could not save notifications: ' + err.message, 'error');
+  }
+}
+
+document.getElementById('notif-push')?.addEventListener('change', saveNotificationPreferences);
+document.getElementById('notif-email')?.addEventListener('change', saveNotificationPreferences);
+
 
 // Backend stores UTC without 'Z' — append it so JS parses correctly
 function parseServerDate(str) {
@@ -123,9 +259,10 @@ function deviceIcon(type) {
 function renderDevices() {
   const host = document.getElementById('devices-list');
   if (!devices.length) {
-    host.innerHTML = '<div class="list-item muted">No devices connected yet.</div>';
+    host.innerHTML = '<div class="list-item muted">No devices paired yet.</div>';
     return;
   }
+
 
   host.innerHTML = devices.map((device) => {
     const online = isOnline(device);

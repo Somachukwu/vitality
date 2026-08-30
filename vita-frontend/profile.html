@@ -25,11 +25,12 @@
       </header>
       <main class="container stack">
 
+        <!-- Personal Details Card -->
         <section class="card">
           <div class="row between mb-2">
             <div class="card-title" style="margin-bottom:0">Personal details</div>
             <button class="btn btn-ghost" type="button" id="edit-btn">
-              <i data-lucide="pencil"></i> Edit details
+              <i data-lucide="pencil"></i> <span class="hide-mobile">Edit details</span>
             </button>
           </div>
           <form id="profile-form" class="stack profile-readonly">
@@ -38,20 +39,10 @@
               <div><label>Email</label><input id="email" type="email" disabled /></div>
               <div><label>Age</label><input id="age" type="number" min="13" max="100" disabled /></div>
               <div><label>Sex</label>
-                <select id="sex" disabled><option value="">—</option><option>male</option><option>female</option></select>
+                <select id="sex" disabled><option value="">—</option><option value="male">male</option><option value="female">female</option></select>
               </div>
               <div><label>Height (cm)</label><input id="heightCm" type="number" min="100" max="240" disabled /></div>
               <div><label>Weight (kg)</label><input id="weightKg" type="number" step="0.1" disabled /></div>
-            </div>
-            <div class="grid grid-2">
-              <div><label>Daily calorie target</label><input id="cal" type="number" min="1200" max="4000" disabled /></div>
-              <div><label>Goal</label>
-                <select id="goal" disabled>
-                  <option value="maintenance">General wellness / Maintain</option>
-                  <option value="weight_loss">Lose weight</option>
-                  <option value="weight_gain">Gain weight</option>
-                </select>
-              </div>
             </div>
             <div><label>Dietary restrictions</label><input id="diet" placeholder="comma-separated" disabled /></div>
             <div><label>Existing health conditions</label><input id="health" placeholder="e.g. diabetes, hypertension (comma-separated)" disabled /></div>
@@ -62,21 +53,73 @@
           </form>
         </section>
 
-        <section class="card">
-          <div class="card-title">Notifications</div>
-          <label class="row gap-sm" style="cursor:pointer">
-            <input id="notif-push" type="checkbox" style="width:auto"/> Push alerts for anomalies
-          </label>
-          <label class="row gap-sm mt-1" style="cursor:pointer">
-            <input id="notif-email" type="checkbox" style="width:auto"/> Weekly email summary
-          </label>
-        </section>
-
+        <!-- Dedicated Goals & Targets Card -->
         <section class="card">
           <div class="row between mb-2">
-            <div class="card-title" style="margin-bottom:0">Connected devices</div>
+            <div class="card-title" style="margin-bottom:0">Goals &amp; targets</div>
+            <button class="btn btn-ghost" type="button" id="edit-goals-btn">
+              <i data-lucide="target"></i> <span class="hide-mobile">Edit targets</span>
+            </button>
+          </div>
+          <form id="goals-form" class="stack profile-readonly">
+            <div class="grid grid-2">
+              <div>
+                <label for="goal">Primary fitness goal</label>
+                <select id="goal" disabled>
+                  <option value="maintenance">General wellness / Maintain weight</option>
+                  <option value="weight_loss">Lose weight / Fat loss</option>
+                  <option value="weight_gain">Gain weight / Build muscle</option>
+                </select>
+              </div>
+              <div>
+                <label for="cal">Daily calorie target (kcal)</label>
+                <input id="cal" type="number" min="1000" max="5000" disabled />
+              </div>
+            </div>
+
+            <!-- Smart Target Guidance Assistant -->
+            <div class="smart-target-card" id="smart-calc-box">
+              <div class="row between align-center mb-1">
+                <strong class="row gap-xs align-center text-sm" style="color:var(--green-900)">
+                  <i data-lucide="sparkles" style="color:var(--teal)"></i> Smart Target Guidance
+                </strong>
+                <button class="btn btn-ghost text-xs hidden" type="button" id="apply-rec-btn" style="border-color:var(--teal); color:var(--teal-600); font-weight:600; padding:0.25rem 0.6rem">
+                  Apply recommended target
+                </button>
+              </div>
+              <p class="text-sm muted" id="smart-calc-desc">
+                Calculates your resting metabolic rate (BMR) and recommended daily calorie target based on your age, sex, weight, and selected goal.
+              </p>
+            </div>
+
+            <div class="row gap-sm hidden" id="goals-actions">
+              <button class="btn btn-primary" type="submit">Save targets</button>
+              <button class="btn btn-ghost" type="button" id="cancel-goals-btn">Cancel</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Notifications Card -->
+        <section class="card">
+          <div class="card-title">Notifications</div>
+          <div class="stack" style="gap:0.75rem">
+            <label class="row gap-sm align-center" style="cursor:pointer">
+              <input id="notif-push" type="checkbox" />
+              <span>Push alerts for health anomalies &amp; critical metrics</span>
+            </label>
+            <label class="row gap-sm align-center" style="cursor:pointer">
+              <input id="notif-email" type="checkbox" />
+              <span>Weekly wellness &amp; nutrition email summary</span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Devices Card -->
+        <section class="card">
+          <div class="row between mb-2">
+            <div class="card-title" style="margin-bottom:0">Devices</div>
             <button class="btn btn-ghost" type="button" id="add-device-btn">
-              <i data-lucide="plus"></i> Add new
+              <i data-lucide="plus"></i> <span class="hide-mobile">Add new</span>
             </button>
           </div>
           <form id="device-form" class="stack hidden mb-2">
@@ -93,7 +136,7 @@
             <div>
               <label for="device-type">Device type</label>
               <select id="device-type">
-                <option value="station" selected>Station / Smart Scale (Weight & Environment)</option>
+                <option value="station" selected>Station / Smart Scale (Weight &amp; Environment)</option>
               </select>
             </div>
             <div class="row gap-sm flex-wrap">
@@ -107,6 +150,7 @@
           </div>
         </section>
 
+        <!-- Connected Services Card -->
         <section class="card">
           <div class="card-title">Connected services</div>
 
@@ -125,13 +169,15 @@
           </div>
         </section>
 
+        <!-- Account Card -->
         <section class="card">
           <div class="card-title">Account</div>
-          <div class="row gap-sm flex-wrap">
+          <div class="account-actions">
             <button class="btn btn-ghost" id="change-pw"><i data-lucide="key"></i> Change password</button>
             <button class="btn btn-ghost" id="logout-btn"><i data-lucide="log-out"></i> Log out</button>
           </div>
         </section>
+
 
       </main>
     </div>
