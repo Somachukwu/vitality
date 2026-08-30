@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS vitals (
     heart_rate  FLOAT  COMMENT 'bpm',
     spo2        FLOAT  COMMENT 'blood oxygen %',
     temperature FLOAT  COMMENT 'degrees Celsius',
-    humidity    FLOAT  COMMENT 'ambient humidity %',
     weight      FLOAT  COMMENT 'kg',
     steps       INT UNSIGNED,
     recorded_at DATETIME NOT NULL COMMENT 'timestamp from ESP32 or server',

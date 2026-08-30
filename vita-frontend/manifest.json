@@ -1,0 +1,29 @@
+{
+  "name": "Vitality \u2014 Smart Health & Nutrition",
+  "short_name": "Vitality",
+  "description": "Smart personalized health, vitals, and nutrition monitoring platform.",
+  "start_url": "/dashboard.html",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0B0F19",
+  "theme_color": "#00BFA5",
+  "icons": [
+    {
+      "src": "vitality-favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "vitality-logo-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "vitality-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

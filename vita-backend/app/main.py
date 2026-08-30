@@ -165,6 +165,23 @@ def _run_migrations():
                     conn.execute(text(f"ALTER TABLE recommendations ADD COLUMN {col_name} {col_def}"))
                     conn.commit()
 
+        # ── composite indexes for high-frequency queries ─────────────────────────
+        indexes_to_ensure = [
+            ("vitals", "idx_vitals_user_recorded", "CREATE INDEX idx_vitals_user_recorded ON vitals (user_id, recorded_at DESC)"),
+            ("vitals", "idx_vitals_source_date", "CREATE INDEX idx_vitals_source_date ON vitals (user_id, source, recorded_at)"),
+            ("sleep_sessions", "idx_sleep_user_date", "CREATE INDEX idx_sleep_user_date ON sleep_sessions (user_id, sleep_date DESC)"),
+            ("meals", "idx_meals_user_logged", "CREATE INDEX idx_meals_user_logged ON meals (user_id, logged_at DESC)"),
+        ]
+        for tbl, idx_name, create_sql in indexes_to_ensure:
+            if tbl in inspector.get_table_names():
+                existing_idxs = [i["name"] for i in inspector.get_indexes(tbl)]
+                if idx_name not in existing_idxs:
+                    try:
+                        conn.execute(text(create_sql))
+                        conn.commit()
+                    except Exception:
+                        pass
+
 
 # Create any new tables, then patch existing ones
 Base.metadata.create_all(bind=engine)

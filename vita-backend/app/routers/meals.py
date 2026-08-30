@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.meal import Meal, MealItem
 from app.models.user import User
 from app.schemas.meal import MealCreate, MealOut
@@ -10,9 +10,22 @@ from app.schemas.meal import MealCreate, MealOut
 router = APIRouter(prefix="/meals", tags=["meals"])
 
 
+def _run_recommendation_background(user_id: int):
+    """Evaluate recommendation engine in background after meal logging."""
+    from recommendation_engine.recommendation_service import generate_and_persist_recommendations
+    bg_db = SessionLocal()
+    try:
+        generate_and_persist_recommendations(user_id, bg_db)
+    except Exception:
+        pass
+    finally:
+        bg_db.close()
+
+
 @router.post("/", response_model=MealOut, status_code=201)
 def log_meal(
     body: MealCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -39,6 +52,7 @@ def log_meal(
 
     db.commit()
     db.refresh(meal)
+    background_tasks.add_task(_run_recommendation_background, current_user.id)
     return meal
 
 
@@ -58,6 +72,7 @@ def get_meals(
 @router.delete("/{meal_id}", status_code=204)
 def delete_meal(
     meal_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -66,3 +81,4 @@ def delete_meal(
         raise HTTPException(status_code=404, detail="Meal not found")
     db.delete(meal)
     db.commit()
+    background_tasks.add_task(_run_recommendation_background, current_user.id)

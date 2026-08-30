@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta, timezone, date
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, cast, Date
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user, get_device_from_api_key
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.device import Device
 from app.models.user import User
 from app.models.vitals import Vitals
@@ -332,8 +332,21 @@ def get_vitals_history(
     return summaries
 
 
+def _run_recommendation_background(user_id: int):
+    """Evaluate recommendation engine in background after sync."""
+    from recommendation_engine.recommendation_service import generate_and_persist_recommendations
+    bg_db = SessionLocal()
+    try:
+        generate_and_persist_recommendations(user_id, bg_db)
+    except Exception:
+        pass
+    finally:
+        bg_db.close()
+
+
 @router.post("/sync-all", response_model=SyncAllOut)
 def sync_all(
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -357,11 +370,12 @@ def sync_all(
 
     if token_row:
         result = sync_google_health(
-            user_id=current_user.id, db=db, hours_back=24
+            user_id=current_user.id, db=db, hours_back=72
         )
         google_synced = True
         synced_count = result["synced_count"]
         sleep_sessions_synced = result["sleep_sessions_synced"]
+        background_tasks.add_task(_run_recommendation_background, current_user.id)
 
     # Build fresh vitals after sync
     try:

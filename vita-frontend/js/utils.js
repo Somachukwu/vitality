@@ -215,4 +215,22 @@ export async function compressImage(file, maxDimension = 1200, quality = 0.80) {
   }
 }
 
+// ── PWA Service Worker Registration ───────────────────────────────────────────
+export function registerServiceWorker() {
+  if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => {
+          console.debug('[PWA] ServiceWorker registered with scope:', reg.scope);
+        })
+        .catch((err) => {
+          console.debug('[PWA] ServiceWorker registration skipped/failed:', err);
+        });
+    });
+  }
+}
+
+// Auto-register service worker on page load
+registerServiceWorker();
+
 

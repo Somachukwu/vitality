@@ -90,7 +90,7 @@ def _as_number(value: Any) -> float | None:
 
 
 def _latest_value(data_points: list[dict[str, Any]], data_key: str, value_key: str) -> float | None:
-    for point in data_points:
+    for point in reversed(data_points):
         value = _as_number(point.get(data_key, {}).get(value_key))
         if value is not None:
             return value
@@ -126,36 +126,38 @@ def _daily_rollup(headers: dict[str, str], data_type: str, start: datetime, end:
         return None
 
 
-def _list_data_points(headers: dict[str, str], data_type: str, filter_expression: str = "", page_size: int = 100) -> list[dict[str, Any]]:
-    """List matching data points and follow any pagination token."""
+def _list_data_points(headers: dict[str, str], data_type: str, filter_expression: str = "", page_size: int = 50, max_pages: int = 1) -> list[dict[str, Any]]:
+    """List matching data points and follow any pagination token up to max_pages."""
     url = f"{_HEALTH_BASE}/dataTypes/{data_type}/dataPoints"
     params: dict[str, Any] = {"pageSize": page_size}
     if filter_expression:
         params["filter"] = filter_expression
     points: list[dict[str, Any]] = []
+    pages = 0
     try:
-        while True:
+        while pages < max_pages:
             result = _get_json(url, headers, params=params)
-            points.extend(result.get("dataPoints", []))
+            pts = result.get("dataPoints", [])
+            points.extend(pts)
             token = result.get("nextPageToken")
-            if not token:
-                return points
+            if not token or not pts:
+                break
             params["pageToken"] = token
+            pages += 1
     except requests.RequestException as exc:
         logger.info("Google Health %s query unavailable: %s", data_type, exc)
-        return points
+    return points
 
 
 def _fetch_daily_metrics(headers: dict[str, str], start: datetime, end: datetime) -> dict[str, float | int]:
-    """Retrieve VITALITY's daily aggregate fields through v4 dailyRollUp."""
+    """Retrieve VITALITY's daily aggregate fields concurrently through v4 dailyRollUp."""
+    from concurrent.futures import ThreadPoolExecutor
     metrics: dict[str, float | int] = {}
-    rollups = {
-        "steps": _daily_rollup(headers, "steps", start, end),
-        "calories": _daily_rollup(headers, "total-calories", start, end),
-        "distance": _daily_rollup(headers, "distance", start, end),
-        "active": _daily_rollup(headers, "active-minutes", start, end),
-        "floors": _daily_rollup(headers, "floors", start, end),
-    }
+    dtypes = ["steps", "total-calories", "distance", "active-minutes", "floors"]
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {dtype: executor.submit(_daily_rollup, headers, dtype, start, end) for dtype in dtypes}
+        rollups = {dtype: f.result() for dtype, f in futures.items()}
+
     count = _as_number((rollups["steps"] or {}).get("steps", {}).get("countSum"))
     if count is not None:
         metrics["steps"] = int(count)
@@ -175,34 +177,56 @@ def _fetch_daily_metrics(headers: dict[str, str], start: datetime, end: datetime
 
 
 def _fetch_latest_metrics(headers: dict[str, str], start: datetime, end: datetime) -> dict[str, float]:
-    """Retrieve VITALITY's point-in-time fields through the v4 list endpoint."""
+    """Retrieve VITALITY's point-in-time fields concurrently through the v4 list endpoint."""
+    from concurrent.futures import ThreadPoolExecutor
     start_iso = start.strftime("%Y-%m-%dT%H:%M:%SZ")
     end_iso = end.strftime("%Y-%m-%dT%H:%M:%SZ")
     metrics: dict[str, float] = {}
-    for vital_field, data_type, data_key, value_key, filter_key in (
-        ("heart_rate", "heart-rate", "heartRate", "beatsPerMinute", "heart_rate"),
-        ("spo2", "oxygen-saturation", "oxygenSaturation", "percentage", "oxygen_saturation"),
-        ("temperature", "core-body-temperature", "coreBodyTemperature", "temperatureCelsius", "core_body_temperature"),
-    ):
-        filter_expression = f'{filter_key}.sample_time.physical_time >= "{start_iso}" AND {filter_key}.sample_time.physical_time < "{end_iso}"'
-        points = _list_data_points(headers, data_type, filter_expression)
-        if not points:
-            # Fallback: query without strict date filter to catch recent readings
-            points = _list_data_points(headers, data_type, "", page_size=20)
-        value = _latest_value(points, data_key, value_key)
-        if value is not None:
-            metrics[vital_field] = round(value, 1)
 
-    # Fallback for SpO2: Most consumer wearables (Fitbit, Pixel Watch) record SpO2
-    # overnight during sleep as daily-oxygen-saturation rather than intraday points
-    if "spo2" not in metrics:
-        daily_points = _list_data_points(headers, "daily-oxygen-saturation", "", page_size=10)
-        for point in daily_points:
-            daily_data = point.get("dailyOxygenSaturation", {})
-            val = _as_number(daily_data.get("averagePercentage") or daily_data.get("percentage") or daily_data.get("lowerBoundPercentage"))
-            if val is not None:
-                metrics["spo2"] = round(val, 1)
-                break
+    def _get_hr():
+        hr_points = _list_data_points(headers, "heart-rate", f'heart_rate.sample_time.physical_time >= "{start_iso}" AND heart_rate.sample_time.physical_time < "{end_iso}"', page_size=20, max_pages=1)
+        if not hr_points:
+            hr_points = _list_data_points(headers, "heart-rate", "", page_size=20, max_pages=1)
+        hr_val = _latest_value(hr_points, "heartRate", "beatsPerMinute")
+        if hr_val is None:
+            rhr_points = _list_data_points(headers, "daily-resting-heart-rate", "", page_size=10, max_pages=1)
+            hr_val = _latest_value(rhr_points, "dailyRestingHeartRate", "beatsPerMinute") or _latest_value(rhr_points, "restingHeartRate", "beatsPerMinute")
+        return hr_val
+
+    def _get_spo2():
+        spo2_points = _list_data_points(headers, "oxygen-saturation", f'oxygen_saturation.sample_time.physical_time >= "{start_iso}" AND oxygen_saturation.sample_time.physical_time < "{end_iso}"', page_size=20, max_pages=1)
+        if not spo2_points:
+            spo2_points = _list_data_points(headers, "oxygen-saturation", "", page_size=20, max_pages=1)
+        spo2_val = _latest_value(spo2_points, "oxygenSaturation", "percentage")
+        if spo2_val is None:
+            d_spo2_points = _list_data_points(headers, "daily-oxygen-saturation", "", page_size=10, max_pages=1)
+            for point in reversed(d_spo2_points):
+                daily_data = point.get("dailyOxygenSaturation", {})
+                val = _as_number(daily_data.get("averagePercentage") or daily_data.get("percentage") or daily_data.get("lowerBoundPercentage"))
+                if val is not None:
+                    spo2_val = val
+                    break
+        return spo2_val
+
+    def _get_temp():
+        temp_points = _list_data_points(headers, "core-body-temperature", "", page_size=10, max_pages=1)
+        return _latest_value(temp_points, "coreBodyTemperature", "temperatureCelsius")
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        f_hr = executor.submit(_get_hr)
+        f_spo2 = executor.submit(_get_spo2)
+        f_temp = executor.submit(_get_temp)
+
+        hr_res = f_hr.result()
+        spo2_res = f_spo2.result()
+        temp_res = f_temp.result()
+
+    if hr_res is not None:
+        metrics["heart_rate"] = round(hr_res, 1)
+    if spo2_res is not None:
+        metrics["spo2"] = round(spo2_res, 1)
+    if temp_res is not None:
+        metrics["temperature"] = round(temp_res, 1)
 
     return metrics
 
@@ -278,6 +302,7 @@ def _sync_sleep_sessions(user_id: int, db: Session, headers: dict[str, str], sta
 
 def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[str, int]:
     """Synchronize Google Health v4 data into VITALITY's Vitals and SleepSession records."""
+    from concurrent.futures import ThreadPoolExecutor
     token_row = db.query(GoogleHealthToken).filter(
         GoogleHealthToken.user_id == user_id,
         GoogleHealthToken.is_active.is_(True),
@@ -292,8 +317,13 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
     sync_start = now - timedelta(hours=hours_back)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     headers = {"Authorization": f"Bearer {credentials.token}", "Accept": "application/json"}
-    metrics = _fetch_daily_metrics(headers, today_start, today_start + timedelta(days=1))
-    metrics.update(_fetch_latest_metrics(headers, sync_start, now))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_daily = executor.submit(_fetch_daily_metrics, headers, today_start, today_start + timedelta(days=1))
+        f_latest = executor.submit(_fetch_latest_metrics, headers, sync_start, now)
+
+        metrics = f_daily.result()
+        metrics.update(f_latest.result())
     synced_count = 0
     if metrics:
         record = db.query(Vitals).filter(
