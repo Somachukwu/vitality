@@ -37,25 +37,39 @@ function render() {
   const list = allRecs.filter(r => !filter || r.type === filter);
   const host = document.getElementById('list');
   if (!list.length) {
-    host.innerHTML = `<div class="card center muted">No recommendations yet.</div>`;
+    host.innerHTML = `<div class="card center muted">No insights recorded yet.</div>`;
     return;
   }
   host.innerHTML = list.map(r => {
     const m = TYPE_META[r.type] || TYPE_META.nutrition;
-    return `<div class="card${r.is_read ? ' opacity-60' : ''}">
+    let actionBtn = '';
+    if (r.action_data?.route) {
+      actionBtn = `<a href="${r.action_data.route}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600">${r.action_data.action_label || 'View'} →</a>`;
+    }
+    const tierBadge = r.tier === 'safety' ? '<span class="badge badge-critical">Safety Alert</span>' : '';
+
+    return `<div class="card${r.is_read ? ' opacity-60' : ''}" style="${r.tier === 'safety' ? 'border-left:4px solid #ef4444' : ''}">
       <div class="row between mb-1">
-        <span class="badge ${m.badge}"><i data-lucide="${m.icon}"></i> ${m.label}</span>
+        <div class="row gap-xs align-center">
+          <span class="badge ${m.badge}"><i data-lucide="${m.icon}"></i> ${m.label}</span>
+          ${tierBadge}
+        </div>
         <span class="badge ${severityBadge(r.severity)}">${r.severity}</span>
       </div>
-      <p>${r.message}</p>
-      <div class="row between mt-2">
+      ${r.title ? `<h3 style="margin: 0.35rem 0; font-size:1.05rem; font-weight:600">${r.title}</h3>` : ''}
+      <p style="line-height:1.5">${r.message}</p>
+      <div class="row between align-center mt-2">
         <span class="text-xs muted">${formatDate(r.created_at)}</span>
-        ${r.is_read ? '<span class="text-xs muted">Read</span>' : `<button class="btn btn-ghost text-xs" onclick="markRead(${r.id})">Mark as read</button>`}
+        <div class="row gap-sm align-center">
+          ${actionBtn}
+          ${r.is_read ? '<span class="text-xs muted">Read</span>' : `<button class="btn btn-ghost text-xs" onclick="markRead(${r.id})">Mark read</button>`}
+        </div>
       </div>
     </div>`;
   }).join('');
   initLucide();
 }
+
 
 window.markRead = async (id) => {
   try {

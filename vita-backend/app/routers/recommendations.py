@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -17,19 +20,88 @@ def get_recommendations(
     db: Session = Depends(get_db),
 ):
     """
-    Returns the latest recommendations for the authenticated user.
-    If no recommendations exist yet, runs generation on-the-fly.
+    Returns all recommendations for the authenticated user, ordered newest first.
+    Automatically generates fresh recommendations if none exist for today.
     """
-    recs = (
+    today_start = datetime.now(timezone.utc).date()
+    today_start_dt = datetime.combine(today_start, datetime.min.time())
+
+    today_count = (
+        db.query(Recommendation)
+        .filter(Recommendation.user_id == current_user.id, Recommendation.created_at >= today_start_dt)
+        .count()
+    )
+    if today_count == 0:
+        generate_and_persist_recommendations(current_user.id, db)
+
+    return (
         db.query(Recommendation)
         .filter(Recommendation.user_id == current_user.id)
         .order_by(Recommendation.created_at.desc())
-        .limit(20)
+        .limit(50)
         .all()
     )
-    if not recs:
-        recs = generate_and_persist_recommendations(current_user.id, db)
-    return recs
+
+
+@router.get("/top", response_model=Optional[RecommendationOut])
+def get_top_recommendation(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns the single most critical active insight for the dashboard.
+    Precedence:
+      1. Unread Safety Alert
+      2. Today's Primary Action
+      3. Today's Supporting Insight
+      4. Most recent active recommendation
+    """
+    today_start = datetime.now(timezone.utc).date()
+    today_start_dt = datetime.combine(today_start, datetime.min.time())
+
+    today_recs = (
+        db.query(Recommendation)
+        .filter(Recommendation.user_id == current_user.id, Recommendation.created_at >= today_start_dt)
+        .order_by(Recommendation.created_at.desc())
+        .all()
+    )
+    if not today_recs:
+        today_recs = generate_and_persist_recommendations(current_user.id, db)
+
+    # 1. Unread Safety Alert
+    safety = (
+        db.query(Recommendation)
+        .filter(
+            Recommendation.user_id == current_user.id,
+            Recommendation.tier == "safety",
+            Recommendation.is_read == False,
+        )
+        .order_by(Recommendation.created_at.desc())
+        .first()
+    )
+    if safety:
+        return safety
+
+    # 2. Today's Primary Action
+    for r in today_recs:
+        if r.tier == "primary_action":
+            return r
+
+    # 3. Today's Supporting Insight
+    for r in today_recs:
+        if r.tier == "supporting_insight":
+            return r
+
+    # 4. Fallback to latest
+    if today_recs:
+        return today_recs[0]
+
+    return (
+        db.query(Recommendation)
+        .filter(Recommendation.user_id == current_user.id)
+        .order_by(Recommendation.created_at.desc())
+        .first()
+    )
 
 
 @router.get("/grouped", response_model=RecommendationsGroupedOut)
@@ -38,9 +110,20 @@ def get_grouped_recommendations(
     db: Session = Depends(get_db),
 ):
     """
-    Returns curated recommendations grouped into Safety Alert,
+    Returns recommendations grouped into Safety Alert,
     Primary Action, and Supporting Insight.
     """
+    today_start = datetime.now(timezone.utc).date()
+    today_start_dt = datetime.combine(today_start, datetime.min.time())
+
+    today_count = (
+        db.query(Recommendation)
+        .filter(Recommendation.user_id == current_user.id, Recommendation.created_at >= today_start_dt)
+        .count()
+    )
+    if today_count == 0:
+        generate_and_persist_recommendations(current_user.id, db)
+
     recs = (
         db.query(Recommendation)
         .filter(Recommendation.user_id == current_user.id)
@@ -48,8 +131,6 @@ def get_grouped_recommendations(
         .limit(20)
         .all()
     )
-    if not recs:
-        recs = generate_and_persist_recommendations(current_user.id, db)
 
     safety = None
     primary = None
@@ -97,4 +178,5 @@ def mark_as_read(
     db.commit()
     db.refresh(rec)
     return rec
+
 

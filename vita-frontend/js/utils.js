@@ -215,22 +215,23 @@ export async function compressImage(file, maxDimension = 1200, quality = 0.80) {
   }
 }
 
-// ── PWA Service Worker Registration ───────────────────────────────────────────
-export function registerServiceWorker() {
-  if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
-        .then((reg) => {
-          console.debug('[PWA] ServiceWorker registered with scope:', reg.scope);
-        })
-        .catch((err) => {
-          console.debug('[PWA] ServiceWorker registration skipped/failed:', err);
-        });
-    });
+// ── PWA Service Worker Cleanup (Direct Network Loading) ───────────────────────
+export function cleanupServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister().catch(() => {});
+      }
+    }).catch(() => {});
+  }
+  if ('caches' in window) {
+    caches.keys().then((keys) => {
+      keys.forEach((key) => caches.delete(key).catch(() => {}));
+    }).catch(() => {});
   }
 }
 
-// Auto-register service worker on page load
-registerServiceWorker();
+// Auto-cleanup any old service worker caches
+cleanupServiceWorker();
 
 

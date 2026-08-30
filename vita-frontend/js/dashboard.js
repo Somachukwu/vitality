@@ -100,10 +100,37 @@ function renderBmi(weightKg, heightCm) {
 }
 
 function renderRec(rec) {
-  document.getElementById('rec-text').textContent = rec.message || '';
-  const trigger = document.getElementById('rec-trigger');
-  if (trigger) trigger.textContent = '';
+  const textEl = document.getElementById('rec-text');
+  const triggerEl = document.getElementById('rec-trigger');
+  if (!textEl) return;
+
+  const titleHtml = rec.title ? `<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">${rec.title}</strong>` : '';
+  textEl.innerHTML = `${titleHtml}<span>${rec.message || ''}</span>`;
+
+  if (triggerEl) {
+    let actionBtn = '';
+    if (rec.action_data?.route) {
+      actionBtn = `<a href="${rec.action_data.route}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.25rem 0.6rem; border:1px solid currentColor; border-radius:999px; display:inline-flex; align-items:center; gap:0.25rem">${rec.action_data.action_label || 'View Details'} →</a>`;
+    }
+    const viewAllLink = `<a href="recommendations.html" class="text-xs muted" style="text-decoration:underline">All insights</a>`;
+    triggerEl.innerHTML = `<div class="row between align-center mt-2">${actionBtn || '<span></span>'}${viewAllLink}</div>`;
+  }
+
+  const card = document.getElementById('rec-card');
+  if (card) {
+    if (rec.severity === 'critical' || rec.tier === 'safety') {
+      card.style.borderColor = '#ef4444';
+      card.style.background = 'rgba(239, 68, 68, 0.08)';
+    } else if (rec.severity === 'warning') {
+      card.style.borderColor = '#f59e0b';
+      card.style.background = 'rgba(245, 158, 11, 0.08)';
+    } else {
+      card.style.borderColor = '';
+      card.style.background = '';
+    }
+  }
 }
+
 
 async function renderNutrition(meals, goal) {
   const total  = meals.reduce((s, m) => s + m.totalCalories, 0);
@@ -180,17 +207,18 @@ async function loadAll() {
   // BMI — last reading from the smart scale, falling back to the manually-entered profile weight
   renderBmi(latestWeight ?? user.weight, user.height);
 
-  // Recommendations
+  // Recommendations (Top critical insight for today)
   try {
-    const recs = await api.get('/recommendations/');
-    if (recs.length) {
-      renderRec(recs[0]);
+    const topRec = await api.get('/recommendations/top');
+    if (topRec) {
+      renderRec(topRec);
     } else {
       document.getElementById('rec-text').textContent = 'No tips yet — log a meal or connect your Google Health account in Profile to get personalized recommendations.';
     }
   } catch {
     document.getElementById('rec-text').textContent = 'Could not load your recommendation right now.';
   }
+
 
   // Meals (today)
   try {

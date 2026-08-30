@@ -13,7 +13,7 @@ Endpoints:
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from sqlalchemy.orm import Session
@@ -21,11 +21,24 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.dependencies import get_current_user
 from app.core.encryption import decrypt, encrypt
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models.google_health_token import GoogleHealthToken
 from app.models.user import User
 from app.schemas.google_health import GoogleHealthStatusOut, GoogleHealthSyncOut
 from app.services.google_health_service import sync_google_health
+
+
+def _run_recommendation_background(user_id: int):
+    """Evaluate recommendation engine in background after health data sync."""
+    from recommendation_engine.recommendation_service import generate_and_persist_recommendations
+    bg_db = SessionLocal()
+    try:
+        generate_and_persist_recommendations(user_id, bg_db)
+    except Exception:
+        pass
+    finally:
+        bg_db.close()
+
 
 # Allow HTTP in development only — must NOT be set in production
 if settings.APP_ENV == "development":
@@ -252,6 +265,7 @@ def google_health_status(
 # ── 5. On-demand sync endpoint ────────────────────────────────────────────────
 @router.post("/sync", response_model=GoogleHealthSyncOut)
 def google_health_sync(
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -261,11 +275,13 @@ def google_health_sync(
     Weight is never synced from Google Health — it comes from the smart scale only.
     """
     result = sync_google_health(user_id=current_user.id, db=db, hours_back=24)
+    background_tasks.add_task(_run_recommendation_background, current_user.id)
     return GoogleHealthSyncOut(
         synced_count=result["synced_count"],
         sleep_sessions_synced=result["sleep_sessions_synced"],
         message=f"Synced {result['synced_count']} vitals data points and {result['sleep_sessions_synced']} sleep session(s).",
     )
+
 
 
 # ── 6. Disconnect endpoint ────────────────────────────────────────────────────

@@ -76,7 +76,7 @@ check("GET  /devices/", s, d, 200)
 # ── Vitals (ESP32 path) ───────────────────────────────────────
 esp = {"X-API-Key": api_key}
 s, d = req("POST", "/vitals/ingest", {
-    "heart_rate": 72.0, "spo2": 98.5, "temperature": 36.6, "humidity": 45.0, "steps": 1500,
+    "heart_rate": 72.0, "spo2": 98.5, "temperature": 36.6, "steps": 1500,
 }, headers=esp)
 check("POST /vitals/ingest  (ESP32 key)", s, d, 201, "id")
 

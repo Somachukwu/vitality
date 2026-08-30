@@ -7,10 +7,15 @@ Provides both:
    that extracts user history, runs fusion, evaluates the engine, and persists new cards.
 """
 
-from datetime import date, datetime, timedelta, timezone
-from typing import Any, Iterable, Optional
+from __future__ import annotations
 
-from sqlalchemy.orm import Session
+from datetime import date, datetime, timedelta, timezone
+
+from typing import TYPE_CHECKING, Any, Iterable, Optional
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
 
 from .fusion import build_daily_snapshot
 from .ml import detect_anomaly, detect_trends
@@ -283,6 +288,18 @@ def generate_and_persist_recommendations(
         db.commit()
         for r in db_records:
             db.refresh(r)
+    else:
+        # If no new records were inserted (e.g., today was already evaluated), return today's records
+        today_start_dt = datetime.combine(today, datetime.min.time())
+        db_records = (
+            db.query(RecommendationModel)
+            .filter(
+                RecommendationModel.user_id == user_id,
+                RecommendationModel.created_at >= today_start_dt,
+            )
+            .order_by(RecommendationModel.created_at.desc())
+            .all()
+        )
 
     return db_records
 

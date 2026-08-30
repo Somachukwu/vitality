@@ -174,7 +174,7 @@ def test_v1_rules_and_arbitration():
 
 
 def test_cooldown_suppression():
-    print("--- Test 3: Cooldown Filtering ---")
+    print("\n--- Test 3: Cooldown Filtering & Fallback Behavior ---")
     profile = UserProfile(
         user_id="u2",
         age=28,
@@ -186,7 +186,7 @@ def test_cooldown_suppression():
     )
     today = date.today()
 
-    # If incomplete_logging is on cooldown, it should be suppressed
+    # If incomplete_logging is on cooldown, the engine should suppress it and gracefully fall back
     cooldowns = {"nutrition.incomplete_logging"}
     recs = generate_recommendations(
         profile=profile,
@@ -196,17 +196,87 @@ def test_cooldown_suppression():
         sleep_sessions=[],
         history=[],
         active_cooldown_rules=cooldowns,
-        limit_delivery=False,
+        limit_delivery=True,
     )
     rule_ids = {r.rule_id for r in recs}
     assert "nutrition.incomplete_logging" not in rule_ids, "Rule on cooldown must be suppressed!"
-    print("  [OK] Active cooldown rule successfully suppressed.")
+    assert len(recs) >= 1, "Fallback rules should ensure a recommendation is always generated!"
+    print(f"  [OK] Cooldown rule suppressed and fallback fired: {rule_ids}")
+
+
+def test_correlation_and_milestone_rules():
+    print("\n--- Test 4: Correlation & Milestone Rules ---")
+    profile = UserProfile(
+        user_id="u3",
+        age=30,
+        sex=Sex.FEMALE,
+        height_cm=165,
+        weight_kg=60,
+        activity_level=ActivityLevel.MODERATE,
+        goal="maintain",
+    )
+    today = date.today()
+
+    # High carbs (280g) + short sleep (5.2h) + high steps (11,000)
+    today_vitals = [
+        VitalsReading(
+            timestamp=datetime.combine(today, datetime.min.time()),
+            heart_rate_bpm=68,
+            spo2_pct=98.0,
+            steps=11000,
+        )
+    ]
+    today_sleep = [
+        SleepSessionReading(
+            sleep_date=today,
+            duration_min=int(5.2 * 60),
+        )
+    ]
+    today_food = [
+        FoodLogEntry(
+            timestamp=datetime.combine(today, datetime.min.time()),
+            food_name="pasta feast",
+            calories=1800,
+            protein_g=55,
+            carbs_g=280,
+            fat_g=40,
+        ),
+        FoodLogEntry(
+            timestamp=datetime.combine(today, datetime.min.time()),
+            food_name="salad",
+            calories=300,
+            protein_g=10,
+            carbs_g=30,
+            fat_g=10,
+        ),
+    ]
+
+    recs = generate_recommendations(
+        profile=profile,
+        day=today,
+        vitals=today_vitals,
+        food_logs=today_food,
+        sleep_sessions=today_sleep,
+        history=[],
+        limit_delivery=False,
+    )
+    rule_ids = {r.rule_id for r in recs}
+    print(f"  Fired Rules: {rule_ids}")
+    assert "correlation.high_carbs_low_sleep" in rule_ids, "Expected correlation rule to fire!"
+    assert "activity.step_milestone" in rule_ids, "Expected step milestone rule to fire!"
+
+    valid_categories = {"nutrition", "activity", "health_alert", "goal_progress"}
+    for r in recs:
+        assert r.category in valid_categories, f"Invalid category {r.category} for DB ENUM!"
+    print("  [OK] All fired rules comply with DB categories!")
 
 
 if __name__ == "__main__":
     test_calorie_target_and_floors()
     test_v1_rules_and_arbitration()
     test_cooldown_suppression()
+    test_correlation_and_milestone_rules()
     print("\n*** ALL RECOMMENDATION ENGINE SMOKE TESTS PASSED! ***")
+
 
 
