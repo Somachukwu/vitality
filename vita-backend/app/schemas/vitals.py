@@ -8,7 +8,6 @@ class VitalsIngest(BaseModel):
     heart_rate: float | None = None
     spo2: float | None = None
     temperature: float | None = None
-    humidity: float | None = None
     weight: float | None = None
     steps: int | None = None
     recorded_at: datetime | None = None  # ESP32 can send its own timestamp; falls back to server time
@@ -19,7 +18,6 @@ class VitalsOut(BaseModel):
     heart_rate: float | None
     spo2: float | None
     temperature: float | None
-    humidity: float | None
     weight: float | None
     steps: int | None
     calories_burned: float | None = None

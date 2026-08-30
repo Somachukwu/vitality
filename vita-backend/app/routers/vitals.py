@@ -105,7 +105,6 @@ def ingest_vitals(
         heart_rate=body.heart_rate,
         spo2=body.spo2,
         temperature=body.temperature,
-        humidity=body.humidity,
         weight=body.weight,
         steps=body.steps,
         recorded_at=body.recorded_at or now,

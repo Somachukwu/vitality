@@ -158,19 +158,19 @@ def _fetch_daily_metrics(headers: dict[str, str], start: datetime, end: datetime
         futures = {dtype: executor.submit(_daily_rollup, headers, dtype, start, end) for dtype in dtypes}
         rollups = {dtype: f.result() for dtype, f in futures.items()}
 
-    count = _as_number((rollups["steps"] or {}).get("steps", {}).get("countSum"))
+    count = _as_number((rollups.get("steps") or {}).get("steps", {}).get("countSum"))
     if count is not None:
         metrics["steps"] = int(count)
-    kcal = _as_number((rollups["calories"] or {}).get("totalCalories", {}).get("kcalSum"))
+    kcal = _as_number((rollups.get("total-calories") or {}).get("totalCalories", {}).get("kcalSum"))
     if kcal is not None:
         metrics["calories_burned"] = round(kcal, 1)
-    millimeters = _as_number((rollups["distance"] or {}).get("distance", {}).get("millimetersSum"))
+    millimeters = _as_number((rollups.get("distance") or {}).get("distance", {}).get("millimetersSum"))
     if millimeters is not None:
         metrics["distance_km"] = round(millimeters / 1_000_000, 2)
-    active_values = (rollups["active"] or {}).get("activeMinutes", {}).get("activeMinutesRollupByActivityLevel", [])
+    active_values = (rollups.get("active-minutes") or {}).get("activeMinutes", {}).get("activeMinutesRollupByActivityLevel", [])
     if active_values:
         metrics["active_minutes"] = int(sum(_as_number(item.get("activeMinutesSum")) or 0 for item in active_values))
-    floors = _as_number((rollups["floors"] or {}).get("floors", {}).get("countSum"))
+    floors = _as_number((rollups.get("floors") or {}).get("floors", {}).get("countSum"))
     if floors is not None:
         metrics["floors"] = int(floors)
     return metrics

@@ -26,7 +26,6 @@ class Vitals(Base):
     # --- Hardware station metrics (smart scale / env sensor) ---
     weight: Mapped[float | None] = mapped_column(Float, nullable=True)             # kg — from smart scale ONLY
     temperature: Mapped[float | None] = mapped_column(Float, nullable=True)        # °C (skin temp from Fitbit OR ambient from station)
-    humidity: Mapped[float | None] = mapped_column(Float, nullable=True)           # % — environmental, from station
 
     # --- Data source tag ---
     # "google_health" = synced from Google Health API | NULL or "station" = pushed by hardware device
