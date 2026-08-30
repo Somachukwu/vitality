@@ -29,7 +29,7 @@ def _rule_calorie_surplus_action(facts: dict[str, Any]) -> Recommendation:
             f"(+{s.calorie_balance:.0f} kcal over). A lighter dinner or an evening walk can help keep your weekly average aligned."
         ),
         evidence={"total_calories": s.total_calories, "calorie_target": s.calorie_target, "calorie_balance": s.calorie_balance},
-        action_data={"action_label": "View Nutrition", "route": "/food-log.html"},
+        action_data={"action_label": "View Nutrition", "route": "food-log.html"},
         cooldown_days=1,
         confidence=0.85,
     )
@@ -48,7 +48,7 @@ def _rule_calorie_deficit_moderate_action(facts: dict[str, Any]) -> Recommendati
             "If you plan to exercise or recover from training, make sure your next meal includes quality complex carbs and protein."
         ),
         evidence={"total_calories": s.total_calories, "calorie_target": s.calorie_target, "calorie_balance": s.calorie_balance},
-        action_data={"action_label": "Log Meal", "route": "/food-log.html"},
+        action_data={"action_label": "Log Meal", "route": "food-log.html"},
         cooldown_days=1,
         confidence=0.85,
     )
@@ -69,10 +69,11 @@ def _rule_protein_target_hit_action(facts: dict[str, Any]) -> Recommendation:
             "Meeting your protein target supports cellular repair, muscle preservation, and steady energy."
         ),
         evidence={"total_protein_g": s.total_protein_g, "weight_kg": weight},
-        action_data={"action_label": "View Macros", "route": "/food-log.html"},
+        action_data={"action_label": "View Macros", "route": "food-log.html"},
         cooldown_days=2,
         confidence=0.9,
     )
+
 
 
 NUTRITION_RULES = [

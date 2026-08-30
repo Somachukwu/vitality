@@ -25,7 +25,7 @@ def _rule_daily_short_sleep_action(facts: dict[str, Any]) -> Recommendation:
             "Short sleep can diminish cognitive focus and increase appetite. Aim for a calming wind-down routine tonight."
         ),
         evidence={"total_sleep_hours": s.total_sleep_hours},
-        action_data={"action_label": "View Sleep", "route": "/vitals.html"},
+        action_data={"action_label": "View Sleep", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.9,
     )
@@ -45,7 +45,7 @@ def _rule_mild_low_spo2_action(facts: dict[str, Any]) -> Recommendation:
             "Occasional mild dips can occur with sleeping posture or nasal congestion, but monitor for sustained trends."
         ),
         evidence={"avg_spo2": val},
-        action_data={"action_label": "View Vitals", "route": "/vitals.html"},
+        action_data={"action_label": "View Vitals", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.85,
     )
@@ -64,7 +64,7 @@ def _rule_high_stress_action(facts: dict[str, Any]) -> Recommendation:
             "A 5-minute deep breathing session or a short break from screens can help activate your parasympathetic nervous system."
         ),
         evidence={"avg_stress_score": s.avg_stress_score},
-        action_data={"action_label": "View Vitals", "route": "/vitals.html"},
+        action_data={"action_label": "View Vitals", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.85,
     )
@@ -83,7 +83,7 @@ def _rule_daily_low_steps_action(facts: dict[str, Any]) -> Recommendation:
             "Taking a brief walk or opting for stairs over elevators will help keep you on track for active recovery."
         ),
         evidence={"total_steps": s.total_steps},
-        action_data={"action_label": "Track Activity", "route": "/vitals.html"},
+        action_data={"action_label": "Track Activity", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.85,
     )
@@ -102,10 +102,11 @@ def _rule_step_milestone_action(facts: dict[str, Any]) -> Recommendation:
             "Consistent daily activity significantly supports cardiovascular health and metabolic rate."
         ),
         evidence={"total_steps": s.total_steps},
-        action_data={"action_label": "View Activity", "route": "/vitals.html"},
+        action_data={"action_label": "View Activity", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.9,
     )
+
 
 
 VITALS_RULES = [

@@ -102,34 +102,56 @@ function renderBmi(weightKg, heightCm) {
 function renderRec(rec) {
   const textEl = document.getElementById('rec-text');
   const triggerEl = document.getElementById('rec-trigger');
+  const badgeEl = document.getElementById('rec-badge');
   if (!textEl) return;
+
+  // Criticality Indicator Badge (Card background/border remains unaffected)
+  if (badgeEl) {
+    if (rec.severity === 'critical' || rec.tier === 'safety') {
+      badgeEl.innerHTML = '<i data-lucide="shield-alert"></i> Critical Notice';
+      badgeEl.style.color = '#ef4444';
+    } else if (rec.severity === 'warning') {
+      badgeEl.innerHTML = '<i data-lucide="alert-triangle"></i> Attention';
+      badgeEl.style.color = '#f59e0b';
+    } else {
+      badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Today\'s tip';
+      badgeEl.style.color = '';
+    }
+  }
 
   const titleHtml = rec.title ? `<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">${rec.title}</strong>` : '';
   textEl.innerHTML = `${titleHtml}<span>${rec.message || ''}</span>`;
 
   if (triggerEl) {
     let actionBtn = '';
-    if (rec.action_data?.route) {
-      actionBtn = `<a href="${rec.action_data.route}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.25rem 0.6rem; border:1px solid currentColor; border-radius:999px; display:inline-flex; align-items:center; gap:0.25rem">${rec.action_data.action_label || 'View Details'} →</a>`;
+    const rawRoute = rec.action_data?.route || '';
+    const cleanRoute = rawRoute.replace(/^\//, '');
+    if (cleanRoute) {
+      actionBtn = `<a href="${cleanRoute}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.25rem 0.6rem; border:1px solid currentColor; border-radius:999px; display:inline-flex; align-items:center; gap:0.25rem">${rec.action_data.action_label || 'View Details'} →</a>`;
     }
     const viewAllLink = `<a href="recommendations.html" class="text-xs muted" style="text-decoration:underline">All insights</a>`;
     triggerEl.innerHTML = `<div class="row between align-center mt-2">${actionBtn || '<span></span>'}${viewAllLink}</div>`;
   }
+}
 
-  const card = document.getElementById('rec-card');
-  if (card) {
-    if (rec.severity === 'critical' || rec.tier === 'safety') {
-      card.style.borderColor = '#ef4444';
-      card.style.background = 'rgba(239, 68, 68, 0.08)';
-    } else if (rec.severity === 'warning') {
-      card.style.borderColor = '#f59e0b';
-      card.style.background = 'rgba(245, 158, 11, 0.08)';
-    } else {
-      card.style.borderColor = '';
-      card.style.background = '';
-    }
+function renderRecFallback() {
+  const textEl = document.getElementById('rec-text');
+  const triggerEl = document.getElementById('rec-trigger');
+  const badgeEl = document.getElementById('rec-badge');
+  if (!textEl) return;
+
+  if (badgeEl) {
+    badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Today\'s tip';
+    badgeEl.style.color = '';
+  }
+
+  textEl.innerHTML = '<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">Log your meals today</strong><span>You haven\'t logged any meals yet today. Log your meals to track your daily nutrition and generate personalized insights.</span>';
+
+  if (triggerEl) {
+    triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="food-log.html" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.25rem 0.6rem; border:1px solid currentColor; border-radius:999px; display:inline-flex; align-items:center; gap:0.25rem">Log Meal →</a><a href="recommendations.html" class="text-xs muted" style="text-decoration:underline">All insights</a></div>';
   }
 }
+
 
 
 async function renderNutrition(meals, goal) {
@@ -207,17 +229,18 @@ async function loadAll() {
   // BMI — last reading from the smart scale, falling back to the manually-entered profile weight
   renderBmi(latestWeight ?? user.weight, user.height);
 
-  // Recommendations (Top critical insight for today)
+  // Recommendations (Top critical insight for today only)
   try {
     const topRec = await api.get('/recommendations/top');
     if (topRec) {
       renderRec(topRec);
     } else {
-      document.getElementById('rec-text').textContent = 'No tips yet — log a meal or connect your Google Health account in Profile to get personalized recommendations.';
+      renderRecFallback();
     }
   } catch {
-    document.getElementById('rec-text').textContent = 'Could not load your recommendation right now.';
+    renderRecFallback();
   }
+
 
 
   // Meals (today)

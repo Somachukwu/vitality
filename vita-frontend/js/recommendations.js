@@ -43,9 +43,12 @@ function render() {
   host.innerHTML = list.map(r => {
     const m = TYPE_META[r.type] || TYPE_META.nutrition;
     let actionBtn = '';
-    if (r.action_data?.route) {
-      actionBtn = `<a href="${r.action_data.route}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600">${r.action_data.action_label || 'View'} →</a>`;
+    const rawRoute = r.action_data?.route || '';
+    const cleanRoute = rawRoute.replace(/^\//, '');
+    if (cleanRoute) {
+      actionBtn = `<a href="${cleanRoute}" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600">${r.action_data?.action_label || 'View'} →</a>`;
     }
+
     const tierBadge = r.tier === 'safety' ? '<span class="badge badge-critical">Safety Alert</span>' : '';
 
     return `<div class="card${r.is_read ? ' opacity-60' : ''}" style="${r.tier === 'safety' ? 'border-left:4px solid #ef4444' : ''}">

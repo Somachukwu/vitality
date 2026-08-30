@@ -26,7 +26,7 @@ def _rule_high_carbs_low_sleep_action(facts: dict[str, Any]) -> Recommendation:
             "can amplify blood sugar swings and afternoon fatigue. Prioritize protein and fiber for your next meal."
         ),
         evidence={"total_carbs_g": s.total_carbs_g, "total_sleep_hours": s.total_sleep_hours},
-        action_data={"action_label": "View Food Log", "route": "/food-log.html"},
+        action_data={"action_label": "View Food Log", "route": "food-log.html"},
         cooldown_days=2,
         confidence=0.9,
     )
@@ -45,7 +45,7 @@ def _rule_stress_and_surplus_action(facts: dict[str, Any]) -> Recommendation:
             f"(+{s.calorie_balance:.0f} kcal). Taking a short walk or breathing pause before eating helps regulate appetite."
         ),
         evidence={"avg_stress_score": s.avg_stress_score, "calorie_balance": s.calorie_balance},
-        action_data={"action_label": "View Vitals", "route": "/vitals.html"},
+        action_data={"action_label": "View Vitals", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.85,
     )
@@ -64,10 +64,11 @@ def _rule_low_activity_high_calorie_action(facts: dict[str, Any]) -> Recommendat
             "A brisk 20-30 minute walk this evening will help rebalance energy expenditure."
         ),
         evidence={"total_steps": s.total_steps, "calorie_balance": s.calorie_balance},
-        action_data={"action_label": "Track Activity", "route": "/vitals.html"},
+        action_data={"action_label": "Track Activity", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.85,
     )
+
 
 
 CORRELATION_RULES = [

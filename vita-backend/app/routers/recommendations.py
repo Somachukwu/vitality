@@ -49,12 +49,13 @@ def get_top_recommendation(
     db: Session = Depends(get_db),
 ):
     """
-    Returns the single most critical active insight for the dashboard.
+    Returns the single most critical active insight generated today for the dashboard.
     Precedence:
-      1. Unread Safety Alert
+      1. Unread Safety Alert for today
       2. Today's Primary Action
       3. Today's Supporting Insight
-      4. Most recent active recommendation
+      4. Any recommendation for today
+      Returns None if no recommendations exist for today.
     """
     today_start = datetime.now(timezone.utc).date()
     today_start_dt = datetime.combine(today_start, datetime.min.time())
@@ -68,19 +69,13 @@ def get_top_recommendation(
     if not today_recs:
         today_recs = generate_and_persist_recommendations(current_user.id, db)
 
+    if not today_recs:
+        return None
+
     # 1. Unread Safety Alert
-    safety = (
-        db.query(Recommendation)
-        .filter(
-            Recommendation.user_id == current_user.id,
-            Recommendation.tier == "safety",
-            Recommendation.is_read == False,
-        )
-        .order_by(Recommendation.created_at.desc())
-        .first()
-    )
-    if safety:
-        return safety
+    for r in today_recs:
+        if r.tier == "safety" and not r.is_read:
+            return r
 
     # 2. Today's Primary Action
     for r in today_recs:
@@ -92,16 +87,9 @@ def get_top_recommendation(
         if r.tier == "supporting_insight":
             return r
 
-    # 4. Fallback to latest
-    if today_recs:
-        return today_recs[0]
+    # 4. Any today's recommendation
+    return today_recs[0]
 
-    return (
-        db.query(Recommendation)
-        .filter(Recommendation.user_id == current_user.id)
-        .order_by(Recommendation.created_at.desc())
-        .first()
-    )
 
 
 @router.get("/grouped", response_model=RecommendationsGroupedOut)

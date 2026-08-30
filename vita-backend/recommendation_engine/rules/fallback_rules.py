@@ -38,7 +38,7 @@ def _rule_daily_wellness_focus_action(facts: dict[str, Any]) -> Recommendation:
         title="Daily Wellness & Consistency",
         message=tip,
         evidence={"goal": goal_str, "target_calories": s.calorie_target},
-        action_data={"action_label": "View Goals", "route": "/profile.html"},
+        action_data={"action_label": "View Goals", "route": "profile.html"},
         cooldown_days=1,
         confidence=0.8,
     )
@@ -58,10 +58,11 @@ def _rule_macro_balance_insight_action(facts: dict[str, Any]) -> Recommendation:
             "Balancing all three macronutrients supports hormonal regulation and sustained physical energy."
         ),
         evidence={"calories": s.total_calories, "protein_g": s.total_protein_g, "carbs_g": s.total_carbs_g, "fat_g": s.total_fat_g},
-        action_data={"action_label": "View Nutrition", "route": "/food-log.html"},
+        action_data={"action_label": "View Nutrition", "route": "food-log.html"},
         cooldown_days=1,
         confidence=0.75,
     )
+
 
 
 FALLBACK_RULES = [

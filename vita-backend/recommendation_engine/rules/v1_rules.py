@@ -58,7 +58,7 @@ def _rule_safety_severe_deficit_action(facts: dict[str, Any]) -> Recommendation:
             "Extended extreme calorie deficits can impair recovery, metabolism, and immune function."
         ),
         evidence={"total_calories": s.total_calories, "target": s.calorie_target, "deficit": abs(s.calorie_balance or 0)},
-        action_data={"action_type": "nutrition_warning", "route": "/food-log.html"},
+        action_data={"action_type": "nutrition_warning", "route": "food-log.html"},
         cooldown_days=1,
         confidence=0.9,
     )
@@ -113,7 +113,7 @@ def _rule_incomplete_meal_logging_action(facts: dict[str, Any]) -> Recommendatio
         title="Complete Your Daily Meal Log",
         message=msg,
         evidence={"meals_logged": s.meals_logged, "total_calories": s.total_calories, "target_calories": s.calorie_target},
-        action_data={"action_label": "Log Meal", "route": "/food-log.html"},
+        action_data={"action_label": "Log Meal", "route": "food-log.html"},
         cooldown_days=1,
         confidence=1.0,
     )
@@ -135,7 +135,7 @@ def _rule_persistent_short_sleep_action(facts: dict[str, Any]) -> Recommendation
             "impairs recovery. Prioritize an earlier bedtime tonight."
         ),
         evidence={"consecutive_short_days": consecutive_days, "recent_avg_hours": avg_sleep},
-        action_data={"action_label": "Sleep Tips", "route": "/profile.html"},
+        action_data={"action_label": "Sleep Tips", "route": "profile.html"},
         cooldown_days=3,
         confidence=0.95,
     )
@@ -156,7 +156,7 @@ def _rule_weekly_step_gap_action(facts: dict[str, Any]) -> Recommendation:
             "today will help close this gap."
         ),
         evidence={"weekly_avg_steps": weekly_avg, "target_baseline": 8000},
-        action_data={"action_label": "Track Activity", "route": "/dashboard.html"},
+        action_data={"action_label": "Track Activity", "route": "vitals.html"},
         cooldown_days=4,
         confidence=0.9,
     )
@@ -179,7 +179,7 @@ def _rule_protein_quality_gap_action(facts: dict[str, Any]) -> Recommendation:
             f"aiming for around {target_protein:.0f}g supports satiety and lean muscle preservation."
         ),
         evidence={"total_protein_g": s.total_protein_g, "target_protein_g": target_protein, "weight_kg": weight},
-        action_data={"action_label": "View Nutrition", "route": "/food-log.html"},
+        action_data={"action_label": "View Nutrition", "route": "food-log.html"},
         cooldown_days=2,
         confidence=0.85,
     )
@@ -214,7 +214,7 @@ def _rule_weight_trend_mismatch_action(facts: dict[str, Any]) -> Recommendation:
         title=title,
         message=message,
         evidence={"weight_slope_kg_week": slope, "avg_calorie_balance": balance, "goal": goal},
-        action_data={"action_label": "Adjust Goals", "route": "/profile.html"},
+        action_data={"action_label": "Adjust Goals", "route": "profile.html"},
         cooldown_days=7,
         confidence=0.9,
     )
@@ -236,10 +236,11 @@ def _rule_elevated_resting_hr_action(facts: dict[str, Any]) -> Recommendation:
             "This can reflect incomplete recovery, mild stress, or poor sleep. An easier day of physical activity is recommended."
         ),
         evidence={"resting_heart_rate": rhr, "baseline": baseline, "delta": round(rhr - baseline, 1)},
-        action_data={"action_label": "View Vitals", "route": "/dashboard.html"},
+        action_data={"action_label": "View Vitals", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.85,
     )
+
 
 
 V1_RULES = [
