@@ -135,13 +135,47 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 0.5rem 0.25rem; padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
-.bottom-nav a {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  font-size: 0.6875rem; color: var(--muted); padding: 0.375rem; border-radius: 10px;
+.bottom-nav a, .bottom-nav .mobile-menu-trigger {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font-size: 0.6875rem; color: var(--muted); padding: 0.375rem; border-radius: 10px; border: none; background: none; cursor: pointer;
+  text-decoration: none;
 }
 .bottom-nav a.active { color: var(--green-900); background: var(--green-50); }
 :root.dark .bottom-nav a.active { color: var(--teal); }
-.bottom-nav svg { width: 22px; height: 22px; }
+.bottom-nav svg, .bottom-nav i { width: 22px; height: 22px; }
+
+/* Mobile Navigation Drawer Overlay */
+.mobile-drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px); z-index: 999;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
+}
+.mobile-drawer-overlay.open { opacity: 1; pointer-events: auto; }
+.mobile-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 85%; max-width: 320px;
+  background: var(--card); border-left: 1px solid var(--border);
+  z-index: 1000; display: flex; flex-direction: column;
+  padding: 1.25rem; transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: var(--shadow-lg);
+}
+.mobile-drawer-overlay.open .mobile-drawer { transform: translateX(0); }
+.mobile-drawer-links a {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.75rem 0.875rem; border-radius: 12px;
+  color: var(--text); font-weight: 500; font-size: 0.9375rem;
+  text-decoration: none; transition: background 0.15s;
+}
+.mobile-drawer-links a:hover, .mobile-drawer-links a.active {
+  background: var(--green-50); color: var(--green-900);
+}
+:root.dark .mobile-drawer-links a:hover, :root.dark .mobile-drawer-links a.active {
+  background: var(--green-50); color: var(--teal);
+}
+.mobile-drawer-close {
+  padding: 0.4rem; border-radius: 8px;
+}
 
 /* Sidebar (desktop) */
 .side-nav { display: none; }
@@ -164,6 +198,7 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   .bottom-nav { display: none; }
   .app { padding-bottom: 0; }
 }
+
 
 /* Vitals tile */
 .vital {
@@ -284,9 +319,32 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
 /* Responsive header with controls (vitals, insights) */
-.header-with-controls .container { flex-wrap: wrap; gap: 0.5rem; }
-.header-controls { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
-.header-controls select { width: auto; padding: 0.5rem 0.75rem; font-size: 0.875rem; }
+.header-with-controls .container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+}
+.header-with-controls h2 {
+  font-size: 1.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+.header-controls select {
+  width: auto;
+  max-width: 145px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+}
+
 
 /* Responsive chart canvas height */
 .chart-canvas { height: 180px; }

@@ -1,15 +1,16 @@
 import { requireAuth, getUser, saveUser } from './auth.js';
 import { renderNav } from './nav.js';
-import { countUp, vitalsStatus, statusDot, formatTime, formatSleepDuration, toast, applyStoredTheme, toggleTheme, initLucide, waitForChart, computeBmi, bmiStatus } from './utils.js';
+import { countUp, vitalsStatus, statusDot, formatTime, formatSleepDuration, toast, applyStoredTheme, initThemeToggle, setSyncingState, initLucide, waitForChart, computeBmi, bmiStatus } from './utils.js';
 import { api, resolveApiUrl } from './api.js';
 
 applyStoredTheme();
 requireAuth();
 renderNav('dashboard.html');
+initThemeToggle();
 
 let user = getUser();
 document.getElementById('hello-name').textContent = user.name?.split(' ')[0] || 'there';
-document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+
 
 let macrosChart = null;
 
@@ -253,13 +254,8 @@ async function loadAll() {
 
 loadAll();
 
-async function syncNow(btn) {
-  const label = btn.querySelector('span') || btn;
-  const icon = btn.querySelector('i, svg');
-  const originalText = label.textContent;
-  btn.disabled = true;
-  label.textContent = 'Syncing…';
-  if (icon) icon.classList.add('spin');
+async function syncNow() {
+  setSyncingState(true);
   try {
     // Trigger Google Health sync + get fresh vitals in one call
     const result = await api.post('/vitals/sync-all', {});
@@ -277,11 +273,11 @@ async function syncNow(btn) {
   } catch {
     toast('Sync failed — check connection', 'error');
   } finally {
-    btn.disabled = false;
-    label.textContent = originalText;
-    if (icon) icon.classList.remove('spin');
+    setSyncingState(false);
+    initLucide();
   }
 }
+
 
 
 document.getElementById('sync-btn').addEventListener('click', (e) => syncNow(e.currentTarget));

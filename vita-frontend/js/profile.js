@@ -1,7 +1,8 @@
 import { requireAuth, logout } from './auth.js';
 import { renderNav } from './nav.js';
-import { toast, applyStoredTheme, initThemeToggle, initLucide } from './utils.js';
+import { toast, applyStoredTheme, initThemeToggle, setSyncingState, initLucide } from './utils.js';
 import { api, BASE_URL } from './api.js';
+
 
 applyStoredTheme();
 requireAuth();
@@ -21,46 +22,6 @@ let profile = {};
 let devices = [];
 let lastCalculatedRec = null;
 
-function computeSmartTargets() {
-  const weight = Number(document.getElementById('weightKg')?.value || profile.weight || 70);
-  const height = Number(document.getElementById('heightCm')?.value || profile.height || 170);
-  const age = Number(document.getElementById('age')?.value || profile.age || 30);
-  const sex = (document.getElementById('sex')?.value || profile.sex || 'male').toLowerCase();
-  const goal = document.getElementById('goal')?.value || profile.goal_type || 'maintenance';
-
-  // Mifflin-St Jeor Equation for BMR
-  let bmr = 10 * weight + 6.25 * height - 5 * age;
-  if (sex === 'female') {
-    bmr -= 161;
-  } else {
-    bmr += 5;
-  }
-
-  // Moderate physical activity baseline (1.45 multiplier)
-  const tdee = Math.round(bmr * 1.45);
-  let recommendedCal = tdee;
-  let rationale = '';
-
-  if (goal === 'weight_loss') {
-    const floor = sex === 'female' ? 1200 : 1500;
-    recommendedCal = Math.max(floor, tdee - 500);
-    const proteinG = Math.round(weight * 1.6);
-    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and active baseline (TDEE ~${tdee} kcal), a safe 500 kcal deficit targets <strong>${recommendedCal} kcal/day</strong> with <strong>~${proteinG}g protein</strong> to promote fat loss while preserving muscle.`;
-  } else if (goal === 'weight_gain') {
-    recommendedCal = tdee + 300;
-    const proteinG = Math.round(weight * 1.8);
-    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and active baseline (TDEE ~${tdee} kcal), a controlled surplus targets <strong>${recommendedCal} kcal/day</strong> with <strong>~${proteinG}g protein</strong> for muscle building.`;
-  } else {
-    const proteinG = Math.round(weight * 1.2);
-    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and active baseline (TDEE ~${tdee} kcal), maintaining weight targets <strong>${recommendedCal} kcal/day</strong> with <strong>~${proteinG}g protein</strong> for vitality and metabolic balance.`;
-  }
-
-  lastCalculatedRec = recommendedCal;
-  const descEl = document.getElementById('smart-calc-desc');
-  if (descEl) descEl.innerHTML = rationale;
-  return recommendedCal;
-}
-
 async function loadProfile() {
   try {
     profile = await api.get('/users/profile');
@@ -70,12 +31,19 @@ async function loadProfile() {
     set('sex',       profile.sex);
     set('heightCm',  profile.height);
     set('weightKg',  profile.weight);
-    set('cal',       profile.daily_calorie_target);
-    set('goal',      profile.goal_type || 'maintenance');
     set('diet',      (profile.dietary_restrictions || []).join(', '));
     set('health',    (profile.health_conditions || []).join(', '));
 
-    computeSmartTargets();
+    const goalLabel = {
+      weight_loss: 'Lose weight / Fat loss',
+      weight_gain: 'Build muscle / Gain weight',
+      maintenance: 'General wellness / Maintain weight',
+    }[profile.goal_type] || 'General wellness';
+    const calTarget = profile.daily_calorie_target ? `${profile.daily_calorie_target} kcal/day` : '2,000 kcal/day';
+    const goalSummaryEl = document.getElementById('profile-goal-summary');
+    if (goalSummaryEl) {
+      goalSummaryEl.textContent = `Goal: ${goalLabel} · Target: ${calTarget}. Tap to configure and monitor all targets.`;
+    }
 
     const notifPref = profile.notification_preferences || {};
     const pushEl  = document.getElementById('notif-push');
@@ -107,29 +75,7 @@ function setPersonalEditMode(editing) {
   if (editing) initLucide();
 }
 
-// Goals edit state
-const goalsFields = () => document.querySelectorAll('#goals-form input, #goals-form select');
-let goalsSnapshot = {};
-
-function captureGoalsSnapshot() {
-  goalsFields().forEach(f => { goalsSnapshot[f.id] = f.value; });
-}
-function restoreGoalsSnapshot() {
-  goalsFields().forEach(f => { if (f.id in goalsSnapshot) f.value = goalsSnapshot[f.id]; });
-}
-
-function setGoalsEditMode(editing) {
-  const form = document.getElementById('goals-form');
-  goalsFields().forEach(f => { f.disabled = !editing; });
-  form.classList.toggle('profile-readonly', !editing);
-  document.getElementById('edit-goals-btn').classList.toggle('hidden', editing);
-  document.getElementById('goals-actions').classList.toggle('hidden', !editing);
-  document.getElementById('apply-rec-btn').classList.toggle('hidden', !editing);
-  if (editing) initLucide();
-}
-
 setPersonalEditMode(false);
-setGoalsEditMode(false);
 loadProfile();
 loadDevices();
 
@@ -141,7 +87,6 @@ document.getElementById('edit-btn').addEventListener('click', () => {
 document.getElementById('cancel-btn').addEventListener('click', () => {
   restorePersonalSnapshot();
   setPersonalEditMode(false);
-  computeSmartTargets();
 });
 
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
@@ -161,56 +106,11 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
     };
     profile = await api.put('/users/profile', payload);
     setPersonalEditMode(false);
-    computeSmartTargets();
     toast('Personal details updated');
   } catch (err) {
     toast('Could not save: ' + err.message, 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
-  }
-});
-
-// Goals listeners
-document.getElementById('edit-goals-btn').addEventListener('click', () => {
-  captureGoalsSnapshot();
-  setGoalsEditMode(true);
-  computeSmartTargets();
-});
-document.getElementById('cancel-goals-btn').addEventListener('click', () => {
-  restoreGoalsSnapshot();
-  setGoalsEditMode(false);
-  computeSmartTargets();
-});
-
-document.getElementById('goal').addEventListener('change', () => {
-  computeSmartTargets();
-});
-
-document.getElementById('apply-rec-btn').addEventListener('click', () => {
-  if (lastCalculatedRec) {
-    document.getElementById('cal').value = lastCalculatedRec;
-    toast(`Applied recommended target: ${lastCalculatedRec} kcal`);
-  }
-});
-
-document.getElementById('goals-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const get = (id) => document.getElementById(id)?.value ?? '';
-  const btn = e.submitter || document.querySelector('#goals-actions button[type="submit"]');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  try {
-    const payload = {
-      goal_type:            get('goal') || undefined,
-      daily_calorie_target: Number(get('cal')) || undefined,
-    };
-    profile = await api.put('/users/profile', payload);
-    setGoalsEditMode(false);
-    computeSmartTargets();
-    toast('Targets updated');
-  } catch (err) {
-    toast('Could not save targets: ' + err.message, 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Save targets'; }
   }
 });
 
@@ -220,7 +120,11 @@ async function saveNotificationPreferences() {
     const push = document.getElementById('notif-push')?.checked ?? true;
     const email = document.getElementById('notif-email')?.checked ?? false;
     await api.put('/users/profile', {
-      notification_preferences: { push, email },
+      notification_preferences: {
+        ...(profile.notification_preferences || {}),
+        push,
+        email,
+      },
     });
     toast('Notification preferences saved');
   } catch (err) {
@@ -230,6 +134,7 @@ async function saveNotificationPreferences() {
 
 document.getElementById('notif-push')?.addEventListener('change', saveNotificationPreferences);
 document.getElementById('notif-email')?.addEventListener('change', saveNotificationPreferences);
+
 
 
 // Backend stores UTC without 'Z' — append it so JS parses correctly
@@ -386,6 +291,7 @@ const API_BASE = BASE_URL;
 function renderGoogleStatus(status) {
   const sub     = document.getElementById('google-health-sub');
   const actions = document.getElementById('google-health-actions');
+  if (!sub || !actions) return;
 
   if (status.connected) {
     const lastSync = status.last_synced_at
@@ -395,17 +301,19 @@ function renderGoogleStatus(status) {
 
     actions.innerHTML = `
       <span class="badge badge-success">&#9679; Connected</span>
-      <button class="btn btn-ghost text-xs" id="sync-google-btn" type="button">
-        <i data-lucide="refresh-cw"></i> Sync now
-      </button>
-      <button class="btn btn-ghost text-xs" id="disconnect-google-btn" type="button" style="color:#b91c1c">
-        Disconnect
-      </button>
+      <div class="row gap-xs align-center">
+        <button class="btn btn-ghost text-xs" id="sync-google-btn" type="button">
+          <i data-lucide="refresh-cw"></i> <span class="hide-mobile">Sync now</span>
+        </button>
+        <button class="btn btn-ghost text-xs" id="disconnect-google-btn" type="button" style="color:#b91c1c">
+          Disconnect
+        </button>
+      </div>
     `;
     initLucide();
 
-    document.getElementById('sync-google-btn').addEventListener('click', syncGoogleHealth);
-    document.getElementById('disconnect-google-btn').addEventListener('click', disconnectGoogleHealth);
+    document.getElementById('sync-google-btn')?.addEventListener('click', syncGoogleHealth);
+    document.getElementById('disconnect-google-btn')?.addEventListener('click', disconnectGoogleHealth);
   } else {
     sub.textContent = 'Not connected';
     actions.innerHTML = `
@@ -414,7 +322,7 @@ function renderGoogleStatus(status) {
       </button>
     `;
     initLucide();
-    document.getElementById('connect-google-btn').addEventListener('click', connectGoogleHealth);
+    document.getElementById('connect-google-btn')?.addEventListener('click', connectGoogleHealth);
   }
 }
 
@@ -444,8 +352,7 @@ async function connectGoogleHealth() {
 
 /** Sync Google Fit data on demand */
 async function syncGoogleHealth() {
-  const btn = document.getElementById('sync-google-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Syncing…'; }
+  setSyncingState(true);
   try {
     const result = await api.post('/auth/google/sync', {});
     toast(`Synced ${result.synced_count} data points + ${result.sleep_sessions_synced} sleep session(s).`);
@@ -453,9 +360,11 @@ async function syncGoogleHealth() {
   } catch (err) {
     toast('Sync failed: ' + err.message, 'error');
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="refresh-cw"></i> Sync now'; initLucide(); }
+    setSyncingState(false);
+    initLucide();
   }
 }
+
 
 /** Disconnect Google Health */
 async function disconnectGoogleHealth() {

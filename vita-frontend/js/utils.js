@@ -103,14 +103,55 @@ export function waitForChart(timeout = 350) {
 export function applyStoredTheme() {
   if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark');
 }
+
+export function updateThemeIcon() {
+  const isDark = document.documentElement.classList.contains('dark');
+  document.querySelectorAll('#theme-btn, .theme-toggle-btn').forEach((btn) => {
+    btn.innerHTML = `<i data-lucide="${isDark ? 'sun' : 'moon'}"></i>`;
+    btn.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
+  });
+  if (window.lucide) window.lucide.createIcons();
+}
+
 export function toggleTheme() {
   const isDark = document.documentElement.classList.toggle('dark');
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  updateThemeIcon();
 }
+
 export function initThemeToggle(btnId = 'theme-btn') {
-  const btn = document.getElementById(btnId);
-  if (btn) btn.addEventListener('click', toggleTheme);
+  updateThemeIcon();
+  const btns = document.querySelectorAll('#' + btnId + ', .theme-toggle-btn');
+  btns.forEach((btn) => {
+    btn.onclick = toggleTheme;
+  });
 }
+
+export function setSyncingState(syncing) {
+  const syncBtns = document.querySelectorAll('#sync-btn, #sync-btn-2, #sync-google-btn, #sync');
+  syncBtns.forEach((btn) => {
+    btn.disabled = syncing;
+    const label = btn.querySelector('span');
+    if (label) {
+      if (syncing) {
+        if (!btn.dataset.origText) btn.dataset.origText = label.textContent;
+        label.textContent = 'Syncing…';
+      } else if (btn.dataset.origText) {
+        label.textContent = btn.dataset.origText;
+      }
+    }
+  });
+
+  const syncIcons = document.querySelectorAll('#sync-btn i, #sync-btn svg, #sync-btn-2 i, #sync-btn-2 svg, #sync-google-btn i, #sync-google-btn svg, #sync i, #sync svg, .sync-icon');
+  syncIcons.forEach((icon) => {
+    if (syncing) {
+      icon.classList.add('spin');
+    } else {
+      icon.classList.remove('spin');
+    }
+  });
+}
+
 
 export async function compressImage(file, maxDimension = 1200, quality = 0.80) {
   if (!file || !file.type.startsWith('image/')) return file;

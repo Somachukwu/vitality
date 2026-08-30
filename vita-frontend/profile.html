@@ -53,51 +53,19 @@
           </form>
         </section>
 
-        <!-- Dedicated Goals & Targets Card -->
+        <!-- Goals & Targets Card -->
         <section class="card">
-          <div class="row between mb-2">
-            <div class="card-title" style="margin-bottom:0">Goals &amp; targets</div>
-            <button class="btn btn-ghost" type="button" id="edit-goals-btn">
-              <i data-lucide="target"></i> <span class="hide-mobile">Edit targets</span>
-            </button>
+          <div class="row between align-center">
+            <div>
+              <div class="card-title" style="margin-bottom:0.25rem">Goals &amp; targets</div>
+              <p class="text-sm muted" id="profile-goal-summary">Configure and monitor your daily calorie, macro, step, sleep, and weight targets.</p>
+            </div>
+            <a href="goals.html" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.4rem 0.75rem; border-radius:999px; display:inline-flex; align-items:center; gap:0.35rem">
+              <i data-lucide="target"></i> Manage targets →
+            </a>
           </div>
-          <form id="goals-form" class="stack profile-readonly">
-            <div class="grid grid-2">
-              <div>
-                <label for="goal">Primary fitness goal</label>
-                <select id="goal" disabled>
-                  <option value="maintenance">General wellness / Maintain weight</option>
-                  <option value="weight_loss">Lose weight / Fat loss</option>
-                  <option value="weight_gain">Gain weight / Build muscle</option>
-                </select>
-              </div>
-              <div>
-                <label for="cal">Daily calorie target (kcal)</label>
-                <input id="cal" type="number" min="1000" max="5000" disabled />
-              </div>
-            </div>
-
-            <!-- Smart Target Guidance Assistant -->
-            <div class="smart-target-card" id="smart-calc-box">
-              <div class="row between align-center mb-1">
-                <strong class="row gap-xs align-center text-sm" style="color:var(--green-900)">
-                  <i data-lucide="sparkles" style="color:var(--teal)"></i> Smart Target Guidance
-                </strong>
-                <button class="btn btn-ghost text-xs hidden" type="button" id="apply-rec-btn" style="border-color:var(--teal); color:var(--teal-600); font-weight:600; padding:0.25rem 0.6rem">
-                  Apply recommended target
-                </button>
-              </div>
-              <p class="text-sm muted" id="smart-calc-desc">
-                Calculates your resting metabolic rate (BMR) and recommended daily calorie target based on your age, sex, weight, and selected goal.
-              </p>
-            </div>
-
-            <div class="row gap-sm hidden" id="goals-actions">
-              <button class="btn btn-primary" type="submit">Save targets</button>
-              <button class="btn btn-ghost" type="button" id="cancel-goals-btn">Cancel</button>
-            </div>
-          </form>
         </section>
+
 
         <!-- Notifications Card -->
         <section class="card">
@@ -153,21 +121,22 @@
         <!-- Connected Services Card -->
         <section class="card">
           <div class="card-title">Connected services</div>
-
-          <!-- Google Health row — state rendered by profile.js loadGoogleHealthStatus() -->
           <div class="list">
-            <div class="list-item" id="google-health-row">
-              <i data-lucide="activity"></i>
-              <div style="flex:1; min-width:0">
-                <strong>Google Health</strong>
-                <div class="text-xs muted" id="google-health-sub">Loading…</div>
+            <div class="list-item" style="flex-direction:column; gap:0.75rem" id="google-health-row">
+              <div class="row gap-sm align-center" style="width:100%">
+                <i data-lucide="activity" style="color:var(--teal)"></i>
+                <div style="flex:1; min-width:0">
+                  <strong>Google Health</strong>
+                  <div class="text-xs muted" id="google-health-sub">Loading…</div>
+                </div>
               </div>
-              <div class="row gap-sm flex-wrap" style="justify-content:flex-end; align-items:center" id="google-health-actions">
+              <div class="row between align-center" style="width:100%; border-top:1px solid var(--border); padding-top:0.6rem" id="google-health-actions">
                 <!-- Populated by profile.js -->
               </div>
             </div>
           </div>
         </section>
+
 
         <!-- Account Card -->
         <section class="card">
