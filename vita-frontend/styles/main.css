@@ -481,12 +481,20 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   flex-wrap: wrap;
 }
 
+/* Smart Target Card in Goals */
 .smart-target-card {
   background: var(--green-50);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem;
   margin-top: 0.75rem;
+}
+.smart-target-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 640px) {
@@ -500,6 +508,40 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   .account-actions .btn {
     width: 100%;
     justify-content: center;
+  }
+  .smart-target-header {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.625rem;
+  }
+  #apply-rec-btn {
+    width: 100% !important;
+    justify-content: center !important;
+    padding: 0.5rem 0.75rem !important;
+    text-align: center;
+  }
+  .goals-actions-bar {
+    flex-direction: column;
+    width: 100%;
+  }
+  .goals-actions-bar .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  /* Mobile Insights card spacing */
+  .rec-footer {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 0.625rem !important;
+  }
+  .rec-date {
+    display: block;
+    margin-bottom: 0.35rem;
+  }
+  .rec-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
