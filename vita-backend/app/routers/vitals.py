@@ -13,7 +13,7 @@ from app.models.sleep_session import SleepSession
 from app.models.google_health_token import GoogleHealthToken
 from app.schemas.vitals import (
     VitalsIngest, VitalsLatestOut, VitalsOut,
-    VitalsDailySummary, SyncAllOut,
+    VitalsDailySummary, VitalsContinuousPoint, SyncAllOut,
 )
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
@@ -329,6 +329,47 @@ def get_vitals_history(
         ))
 
     return summaries
+
+
+@router.get("/continuous", response_model=list[VitalsContinuousPoint])
+def get_vitals_continuous(
+    days: int = 7,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return individual timestamped HR / SpO₂ readings for continuous charting.
+
+    Unlike /history which groups by day, this endpoint returns every recorded
+    data point so the frontend can plot high-resolution time-series charts.
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    records = (
+        db.query(
+            Vitals.recorded_at,
+            Vitals.heart_rate,
+            Vitals.spo2,
+        )
+        .filter(
+            Vitals.user_id == current_user.id,
+            Vitals.recorded_at >= since,
+        )
+        # At least one of HR or SpO₂ must be present
+        .filter(
+            (Vitals.heart_rate.isnot(None)) | (Vitals.spo2.isnot(None))
+        )
+        .order_by(Vitals.recorded_at.asc())
+        .all()
+    )
+
+    return [
+        VitalsContinuousPoint(
+            recorded_at=r.recorded_at,
+            heart_rate=r.heart_rate,
+            spo2=r.spo2,
+        )
+        for r in records
+    ]
 
 
 def _run_recommendation_background(user_id: int):

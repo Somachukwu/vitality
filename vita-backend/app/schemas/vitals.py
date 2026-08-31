@@ -62,6 +62,13 @@ class VitalsDailySummary(BaseModel):
     awake_min: int | None = None
 
 
+class VitalsContinuousPoint(BaseModel):
+    """Individual timestamped HR / SpO₂ reading for continuous charting."""
+    recorded_at: datetime
+    heart_rate: float | None = None
+    spo2: float | None = None
+
+
 class SyncAllOut(BaseModel):
     """Response from POST /vitals/sync-all."""
     google_synced: bool = False

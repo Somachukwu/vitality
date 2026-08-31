@@ -35,6 +35,69 @@ function makeChart(id, label, data, color) {
   });
 }
 
+/**
+ * Build a Chart.js line chart for continuous (per-reading) data.
+ * X-axis labels are datetime-aware with granularity based on range.
+ */
+function makeContinuousChart(id, label, data, color, days) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  if (charts[id]) charts[id].destroy();
+  const grad = ctx.getContext('2d').createLinearGradient(0, 0, 0, 240);
+  grad.addColorStop(0, color + '55');
+  grad.addColorStop(1, color + '00');
+
+  const timeLabels = data.map(d => {
+    const dt = new Date(d.recorded_at);
+    if (days <= 1) {
+      return dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    } else if (days <= 7) {
+      return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' +
+             dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    } else {
+      return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    }
+  });
+
+  charts[id] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: timeLabels,
+      datasets: [{
+        label,
+        data: data.map(d => d.value),
+        borderColor: color,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: data.length > 100 ? 0 : 3,
+        pointHoverRadius: 5,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: days <= 1 ? 12 : 10,
+            maxRotation: 45,
+            font: { family: 'JetBrains Mono', size: 9 },
+          },
+          grid: { display: false },
+        },
+        y: {
+          ticks: { font: { family: 'JetBrains Mono', size: 10 } },
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          beginAtZero: false,
+        },
+      },
+      animation: { duration: 700 },
+    },
+  });
+}
+
 function makeBarChart(id, label, data, color) {
   const ctx = document.getElementById(id);
   if (!ctx) return;
@@ -114,28 +177,48 @@ function dateLabel(dateStr) {
 }
 
 async function render(days) {
+  // ── Fetch continuous HR / SpO₂ readings AND daily history in parallel ──
+  let continuous = [];
   let history = [];
   try {
-    history = await api.get(`/vitals/history?days=${days}`);
+    [continuous, history] = await Promise.all([
+      api.get(`/vitals/continuous?days=${days}`),
+      api.get(`/vitals/history?days=${days}`),
+    ]);
   } catch {
     document.getElementById('anomalies').innerHTML = `<div class="muted text-sm">Could not load vitals history.</div>`;
     return;
   }
 
-  if (!history.length) {
+  if (!history.length && !continuous.length) {
     document.getElementById('anomalies').innerHTML = `<div class="muted text-sm">No data for this period. Connect your ESP32 or sync Google Health to start recording.</div>`;
     return;
   }
 
   if (await waitForChart()) {
-    // Point-in-time line charts
-    const hrData   = history.filter(h => h.heart_rate != null).map(h => ({ label: dateLabel(h.date), value: h.heart_rate }));
-    const spo2Data = history.filter(h => h.spo2 != null).map(h => ({ label: dateLabel(h.date), value: h.spo2 }));
+    // ── Continuous line charts for HR & SpO₂ (per-reading granularity) ──
+    const hrData   = continuous.filter(c => c.heart_rate != null).map(c => ({ recorded_at: c.recorded_at, value: c.heart_rate }));
+    const spo2Data = continuous.filter(c => c.spo2 != null).map(c => ({ recorded_at: c.recorded_at, value: c.spo2 }));
+
+    if (hrData.length) {
+      makeContinuousChart('c-hr', 'Heart rate', hrData, '#E53E3E', days);
+    } else {
+      // Fall back to daily summary if no continuous data exists yet
+      const hrDaily = history.filter(h => h.heart_rate != null).map(h => ({ label: dateLabel(h.date), value: h.heart_rate }));
+      makeChart('c-hr', 'Heart rate', hrDaily, '#E53E3E');
+    }
+
+    if (spo2Data.length) {
+      makeContinuousChart('c-spo2', 'SpO\u2082', spo2Data, '#00BFA5', days);
+    } else {
+      const spo2Daily = history.filter(h => h.spo2 != null).map(h => ({ label: dateLabel(h.date), value: h.spo2 }));
+      makeChart('c-spo2', 'SpO\u2082', spo2Daily, '#00BFA5');
+    }
+
+    // ── Daily-summary charts (unchanged) ────────────────────────────────
     const tempData = history.filter(h => h.temperature != null).map(h => ({ label: dateLabel(h.date), value: h.temperature }));
     const wtData   = history.filter(h => h.weight != null).map(h => ({ label: dateLabel(h.date), value: h.weight }));
 
-    makeChart('c-hr',   'Heart rate',  hrData,   '#E53E3E');
-    makeChart('c-spo2', 'SpO\u2082',   spo2Data, '#00BFA5');
     makeChart('c-temp', 'Temperature', tempData, '#D97706');
     makeChart('c-wt',   'Weight',      wtData,   '#1B4332');
 
@@ -167,7 +250,7 @@ async function render(days) {
     });
   }
 
-  // Anomaly detection from history
+  // Anomaly detection from daily history (unchanged)
   const anomalies = history.filter(h =>
     (h.heart_rate   != null && vitalsStatus('heartRate',   h.heart_rate)   !== 'green') ||
     (h.spo2         != null && vitalsStatus('spo2',        h.spo2)        !== 'green') ||

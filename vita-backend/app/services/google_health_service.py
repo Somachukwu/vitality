@@ -231,6 +231,65 @@ def _fetch_latest_metrics(headers: dict[str, str], start: datetime, end: datetim
     return metrics
 
 
+def _fetch_all_hr_spo2_points(
+    headers: dict[str, str], start: datetime, end: datetime
+) -> list[dict[str, Any]]:
+    """Retrieve ALL individual heart-rate and SpO₂ samples within the window.
+
+    Each returned dict has keys: heart_rate (float|None), spo2 (float|None),
+    recorded_at (datetime).  Used for continuous charting on the vitals page.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    start_iso = start.strftime("%Y-%m-%dT%H:%M:%SZ")
+    end_iso = end.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _get_hr_points() -> list[dict[str, Any]]:
+        return _list_data_points(
+            headers, "heart-rate",
+            f'heart_rate.sample_time.physical_time >= "{start_iso}" '
+            f'AND heart_rate.sample_time.physical_time < "{end_iso}"',
+            page_size=100, max_pages=5,
+        )
+
+    def _get_spo2_points() -> list[dict[str, Any]]:
+        return _list_data_points(
+            headers, "oxygen-saturation",
+            f'oxygen_saturation.sample_time.physical_time >= "{start_iso}" '
+            f'AND oxygen_saturation.sample_time.physical_time < "{end_iso}"',
+            page_size=100, max_pages=5,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_hr = executor.submit(_get_hr_points)
+        f_spo2 = executor.submit(_get_spo2_points)
+        hr_raw = f_hr.result()
+        spo2_raw = f_spo2.result()
+
+    # Build timestamped HR points
+    continuous: list[dict[str, Any]] = []
+    for pt in hr_raw:
+        hr_val = _as_number(pt.get("heartRate", {}).get("beatsPerMinute"))
+        ts = _parse_google_datetime(
+            (pt.get("heartRate", {}).get("sampleTime") or pt.get("sampleTime") or {}).get("physicalTime")
+        )
+        if hr_val is not None and ts is not None:
+            continuous.append({"heart_rate": round(hr_val, 1), "spo2": None, "recorded_at": ts})
+
+    # Build timestamped SpO₂ points
+    for pt in spo2_raw:
+        spo2_val = _as_number(pt.get("oxygenSaturation", {}).get("percentage"))
+        ts = _parse_google_datetime(
+            (pt.get("oxygenSaturation", {}).get("sampleTime") or pt.get("sampleTime") or {}).get("physicalTime")
+        )
+        if spo2_val is not None and ts is not None:
+            continuous.append({"heart_rate": None, "spo2": round(spo2_val, 1), "recorded_at": ts})
+
+    # Sort by timestamp ascending
+    continuous.sort(key=lambda p: p["recorded_at"])
+    return continuous
+
+
 def _parse_google_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -318,13 +377,18 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     headers = {"Authorization": f"Bearer {credentials.token}", "Accept": "application/json"}
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         f_daily = executor.submit(_fetch_daily_metrics, headers, today_start, today_start + timedelta(days=1))
         f_latest = executor.submit(_fetch_latest_metrics, headers, sync_start, now)
+        f_continuous = executor.submit(_fetch_all_hr_spo2_points, headers, sync_start, now)
 
         metrics = f_daily.result()
         metrics.update(f_latest.result())
+        continuous_points = f_continuous.result()
+
     synced_count = 0
+
+    # ── 1. Upsert today's aggregate row (feeds dashboard "current" values) ───
     if metrics:
         record = db.query(Vitals).filter(
             Vitals.user_id == user_id,
@@ -339,8 +403,39 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
         record.recorded_at = now.replace(tzinfo=None)
         synced_count = len(metrics)
 
+    # ── 2. Insert individual HR / SpO₂ readings for continuous charting ───────
+    _CONTINUOUS_SOURCE = "google_health_continuous"
+    if continuous_points:
+        # Fetch existing timestamps for this source to de-duplicate
+        existing_ts = set(
+            row[0] for row in db.query(Vitals.recorded_at).filter(
+                Vitals.user_id == user_id,
+                Vitals.source == _CONTINUOUS_SOURCE,
+                Vitals.recorded_at >= sync_start.replace(tzinfo=None),
+            ).all()
+        )
+        new_rows = []
+        for pt in continuous_points:
+            ts = pt["recorded_at"]
+            if ts in existing_ts:
+                continue
+            existing_ts.add(ts)  # avoid duplicates within same batch
+            new_rows.append(Vitals(
+                user_id=user_id,
+                device_id=None,
+                source=_CONTINUOUS_SOURCE,
+                heart_rate=pt["heart_rate"],
+                spo2=pt["spo2"],
+                recorded_at=ts,
+            ))
+        if new_rows:
+            db.add_all(new_rows)
+            synced_count += len(new_rows)
+            logger.info("Stored %d continuous HR/SpO₂ readings for user_id=%s", len(new_rows), user_id)
+
     sleep_sessions_synced = _sync_sleep_sessions(user_id, db, headers, sync_start, now)
     token_row.last_synced_at = now.replace(tzinfo=None)
     db.commit()
     logger.info("Google Health sync complete: user_id=%s vitals=%s sleep_sessions=%s", user_id, synced_count, sleep_sessions_synced)
     return {"synced_count": synced_count, "sleep_sessions_synced": sleep_sessions_synced}
+
