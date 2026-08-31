@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -49,16 +49,31 @@ def get_top_recommendation(
     db: Session = Depends(get_db),
 ):
     """
-    Returns the single most critical active insight generated today for the dashboard.
+    Returns the single most critical active insight for the dashboard.
     Precedence:
-      1. Unread Safety Alert for today
+      1. Active unread Safety Alert from today or past 48 hours
       2. Today's Primary Action
       3. Today's Supporting Insight
-      4. Any recommendation for today
-      Returns None if no recommendations exist for today.
+      4. Most recently created recommendation
     """
-    today_start = datetime.now(timezone.utc).date()
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start = now_naive.date()
     today_start_dt = datetime.combine(today_start, datetime.min.time())
+
+    # 1. Check for any unread Safety Alert in the past 48 hours (including yesterday)
+    recent_safety = (
+        db.query(Recommendation)
+        .filter(
+            Recommendation.user_id == current_user.id,
+            Recommendation.tier == "safety",
+            Recommendation.is_read == False,
+            Recommendation.created_at >= now_naive - timedelta(days=2),
+        )
+        .order_by(Recommendation.created_at.desc())
+        .first()
+    )
+    if recent_safety:
+        return recent_safety
 
     today_recs = (
         db.query(Recommendation)
@@ -70,12 +85,13 @@ def get_top_recommendation(
         today_recs = generate_and_persist_recommendations(current_user.id, db)
 
     if not today_recs:
-        return None
-
-    # 1. Unread Safety Alert
-    for r in today_recs:
-        if r.tier == "safety" and not r.is_read:
-            return r
+        # Fall back to the most recent recommendation in history
+        return (
+            db.query(Recommendation)
+            .filter(Recommendation.user_id == current_user.id)
+            .order_by(Recommendation.created_at.desc())
+            .first()
+        )
 
     # 2. Today's Primary Action
     for r in today_recs:
@@ -87,7 +103,7 @@ def get_top_recommendation(
         if r.tier == "supporting_insight":
             return r
 
-    # 4. Any today's recommendation
+    # 4. Any today's recommendation (newest first)
     return today_recs[0]
 
 

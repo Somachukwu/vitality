@@ -154,6 +154,114 @@ function getRotatingMorningInsight(name) {
   };
 }
 
+let recSwitchTimer = null;
+
+function renderSingleRecContent(rec) {
+  const textEl = document.getElementById('rec-text');
+  const triggerEl = document.getElementById('rec-trigger');
+  const badgeEl = document.getElementById('rec-badge');
+  if (!textEl) return;
+
+  if (badgeEl) {
+    const isCritical = rec.tier === 'safety' || rec.priority === 'critical' || rec.severity === 'critical';
+    const defaultBadge = rec.rule_id === 'lifestyle.set_daily_targets' ? 'Getting Started' : (isCritical ? 'Health Alert 🚨' : "Today's tip");
+    const badgeText = rec.badge || defaultBadge;
+    badgeEl.innerHTML = `<i data-lucide="${isCritical ? 'alert-triangle' : 'sparkles'}"></i> ${badgeText}`;
+    
+    if (isCritical) {
+      badgeEl.style.background = 'rgba(229, 62, 62, 0.2)';
+      badgeEl.style.color = '#ff8080';
+      badgeEl.style.borderColor = 'rgba(229, 62, 62, 0.4)';
+    } else {
+      badgeEl.style.background = '';
+      badgeEl.style.color = '';
+      badgeEl.style.borderColor = '';
+    }
+  }
+
+  const titleHtml = rec.title ? `<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">${rec.title}</strong>` : '';
+  textEl.innerHTML = `${titleHtml}<span>${rec.message || ''}</span>`;
+
+  if (triggerEl) {
+    let actionBtn = '';
+    const rawRoute = rec.action_data?.route || '';
+    const cleanRoute = rawRoute.replace(/^\//, '');
+    if (cleanRoute) {
+      actionBtn = `<a href="${cleanRoute}" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">${rec.action_data.action_label || 'View Details'} →</a>`;
+    }
+    const viewAllLink = `<a href="recommendations.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">All insights</a>`;
+    triggerEl.innerHTML = `<div class="row between align-center mt-2">${actionBtn || '<span></span>'}${viewAllLink}</div>`;
+  }
+  initLucide();
+}
+
+function renderRec(cardResult) {
+  if (recSwitchTimer) {
+    clearInterval(recSwitchTimer);
+    recSwitchTimer = null;
+  }
+
+  // Remove any previous tab toggle bar
+  const oldSwitcher = document.getElementById('rec-switcher-controls');
+  if (oldSwitcher) oldSwitcher.remove();
+
+  if (!cardResult) {
+    renderRecFallback();
+    return;
+  }
+
+  // If alternating between Critical Alert and Morning Greeting
+  if (cardResult.isAlternating && Array.isArray(cardResult.cards) && cardResult.cards.length > 1) {
+    const cards = cardResult.cards;
+    let activeIndex = 0;
+
+    const recCardEl = document.getElementById('rec-card');
+    const switcher = document.createElement('div');
+    switcher.id = 'rec-switcher-controls';
+    switcher.className = 'row gap-xs mb-2 align-center';
+
+    cards.forEach((c, idx) => {
+      const btn = document.createElement('button');
+      btn.id = `rec-tab-btn-${idx}`;
+      btn.type = 'button';
+      btn.className = `btn btn-xs`;
+      btn.style.cssText = `padding:0.22rem 0.65rem; border-radius:999px; font-size:0.75rem; transition:all 0.25s ease; ${idx === 0 ? 'background:rgba(255,255,255,0.3); color:#fff; font-weight:700; border:1px solid rgba(255,255,255,0.4);' : 'background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.75); border:1px solid transparent;'}`;
+      btn.innerHTML = c.tabLabel || (c.tier === 'safety' ? '🚨 Critical Alert' : '☀️ Morning Tip');
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        switchToIndex(idx);
+      };
+      switcher.appendChild(btn);
+    });
+
+    recCardEl.insertBefore(switcher, recCardEl.firstChild);
+
+    function switchToIndex(idx) {
+      activeIndex = idx;
+      cards.forEach((_, i) => {
+        const b = document.getElementById(`rec-tab-btn-${i}`);
+        if (b) {
+          b.style.background = i === idx ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)';
+          b.style.color = i === idx ? '#fff' : 'rgba(255,255,255,0.75)';
+          b.style.fontWeight = i === idx ? '700' : '500';
+          b.style.borderColor = i === idx ? 'rgba(255,255,255,0.4)' : 'transparent';
+        }
+      });
+      renderSingleRecContent(cards[idx]);
+    }
+
+    renderSingleRecContent(cards[0]);
+
+    // Automatically alternate between Morning Greeting and Critical Alert every 6 seconds
+    recSwitchTimer = setInterval(() => {
+      const nextIdx = (activeIndex + 1) % cards.length;
+      switchToIndex(nextIdx);
+    }, 6000);
+  } else {
+    renderSingleRecContent(cardResult);
+  }
+}
+
 function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, calorieTarget }) {
   const now = new Date();
   const hour = now.getHours();
@@ -170,17 +278,47 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const consumedProtein = Math.round((mealsData || []).flatMap(m => m.detectedFoods).reduce((sum, f) => sum + (f.protein || 0), 0));
   const mealsCount = (mealsData || []).length;
 
-  // 1. Safety Alerts from backend rule engine ALWAYS win
-  if (topRec && (topRec.tier === 'safety' || topRec.priority === 'critical')) {
+  const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
+  const isMorningWindow = hour >= 0 && hour < 12; // 12:00 AM Midnight to 11:59 AM
+
+  // 1. Morning Window (Starting right at 12:00 AM Midnight)
+  if (isMorningWindow) {
+    const morningRec = {
+      ...getRotatingMorningInsight(firstName),
+      tabLabel: '☀️ Morning Insight',
+    };
+
+    // If there is an active Critical Alert from yesterday/today, constantly alternate between the two!
+    if (isCritical) {
+      return {
+        isAlternating: true,
+        cards: [
+          morningRec,
+          { ...topRec, tabLabel: '🚨 Health Alert', badge: 'Critical Health Alert 🚨' },
+        ],
+      };
+    }
+
+    // New user with unconfigured targets
+    if (!userProfile.daily_calorie_target && topRec?.rule_id === 'lifestyle.set_daily_targets') {
+      return topRec;
+    }
+
+    // Otherwise, the fresh morning poetic insight is the very first insight of the new day
+    return morningRec;
+  }
+
+  // 2. Critical Alert outside of morning window (12:00 PM – 11:59 PM)
+  if (isCritical) {
     return topRec;
   }
 
-  // 2. Unconfigured Targets for New Users
+  // 3. Unconfigured Targets for New Users
   if (!userProfile.daily_calorie_target && topRec?.rule_id === 'lifestyle.set_daily_targets') {
     return topRec;
   }
 
-  // 3. Multi-Target Milestone Celebrations
+  // 4. Multi-Target Milestone Celebrations (Anytime today)
   // A. Steps Target Milestone
   if (targetSteps > 0 && steps >= targetSteps) {
     return {
@@ -214,7 +352,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     };
   }
 
-  // 4. Time-Specific Dynamic Cards
+  // 5. Time-Specific Dynamic Afternoon & Evening Cards
   // A. Evening Step Push (6:00 PM – 11:59 PM)
   if (hour >= 18 && targetSteps > 0 && steps < targetSteps) {
     const remaining = targetSteps - steps;
@@ -318,40 +456,8 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     }
   }
 
-  // E. Morning Insight (5:00 AM – 11:59 AM)
-  if (hour >= 5 && hour < 12) {
-    return getRotatingMorningInsight(firstName);
-  }
-
-  // 5. Fallback to backend top recommendation or default fallback
+  // 6. Return most recent top recommendation from backend, or null
   return topRec || null;
-}
-
-function renderRec(rec) {
-  const textEl = document.getElementById('rec-text');
-  const triggerEl = document.getElementById('rec-trigger');
-  const badgeEl = document.getElementById('rec-badge');
-  if (!textEl) return;
-
-  if (badgeEl) {
-    const badgeText = rec.badge || (rec.rule_id === 'lifestyle.set_daily_targets' ? 'Getting Started' : "Today's tip");
-    badgeEl.innerHTML = `<i data-lucide="sparkles"></i> ${badgeText}`;
-    badgeEl.style.color = '';
-  }
-
-  const titleHtml = rec.title ? `<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">${rec.title}</strong>` : '';
-  textEl.innerHTML = `${titleHtml}<span>${rec.message || ''}</span>`;
-
-  if (triggerEl) {
-    let actionBtn = '';
-    const rawRoute = rec.action_data?.route || '';
-    const cleanRoute = rawRoute.replace(/^\//, '');
-    if (cleanRoute) {
-      actionBtn = `<a href="${cleanRoute}" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">${rec.action_data.action_label || 'View Details'} →</a>`;
-    }
-    const viewAllLink = `<a href="recommendations.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">All insights</a>`;
-    triggerEl.innerHTML = `<div class="row between align-center mt-2">${actionBtn || '<span></span>'}${viewAllLink}</div>`;
-  }
 }
 
 function renderRecFallback() {
@@ -363,6 +469,8 @@ function renderRecFallback() {
   if (badgeEl) {
     badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Getting Started';
     badgeEl.style.color = '';
+    badgeEl.style.background = '';
+    badgeEl.style.borderColor = '';
   }
 
   textEl.innerHTML = '<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">Set Your Daily Health Targets</strong><span>Personalize your daily calorie, macro, step, and sleep targets to start tracking your progress and receive tailored AI health insights.</span>';
@@ -370,6 +478,7 @@ function renderRecFallback() {
   if (triggerEl) {
     triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="goals.html?edit=1" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">Configure Targets →</a><a href="goals.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">View Goals</a></div>';
   }
+  initLucide();
 }
 
 
