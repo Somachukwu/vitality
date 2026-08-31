@@ -63,6 +63,7 @@ function computeSmartRecommendations() {
     targetSleep = 8.0;
     targetWater = Number((weight * 0.035).toFixed(1));
     rationale = Based on your BMR (~ kcal) and <strong></strong> activity (TDEE ~ kcal), a safe 500 kcal deficit targets <strong> kcal/day</strong>, <strong>g protein</strong> for muscle preservation, <strong> steps</strong>, and <strong>L hydration</strong>.;
+    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and <strong>${activity}</strong> activity (TDEE ~${tdee} kcal), a safe 500 kcal deficit targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong> for muscle preservation, <strong>${targetSteps.toLocaleString()} steps</strong>, and <strong>${targetWater}L hydration</strong>.`;
   } else if (goal === 'weight_gain') {
     targetCal = tdee + 300;
     targetProtein = Math.round(weight * 1.9);
@@ -72,8 +73,10 @@ function computeSmartRecommendations() {
     targetSleep = 8.5;
     targetWater = Number((weight * 0.038).toFixed(1));
     rationale = Based on your BMR (~ kcal) and <strong></strong> activity (TDEE ~ kcal), a lean 300 kcal surplus targets <strong> kcal/day</strong> with <strong>g protein</strong> for hypertrophy and <strong>h sleep</strong> for optimal recovery.;
+    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and <strong>${activity}</strong> activity (TDEE ~${tdee} kcal), a lean 300 kcal surplus targets <strong>${targetCal} kcal/day</strong> with <strong>${targetProtein}g protein</strong> for hypertrophy and <strong>${targetSleep}h sleep</strong> for optimal recovery.`;
   } else {
     rationale = Based on your BMR (~ kcal) and <strong></strong> activity (TDEE ~ kcal), maintaining weight targets <strong> kcal/day</strong>, <strong>g protein</strong>, and <strong> steps/day</strong> for sustained health.;
+    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and <strong>${activity}</strong> activity (TDEE ~${tdee} kcal), maintaining weight targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong>, and <strong>${targetSteps.toLocaleString()} steps/day</strong> for sustained health.`;
   }
 
   smartRecs = {
@@ -109,6 +112,9 @@ function renderMonitoring() {
   document.getElementById('cal-bar').style.width = ${calPct}%;
   document.getElementById('cal-status').textContent = ${calPct}% reached;
   document.getElementById('cal-remaining').textContent = ${Math.round(calRemaining).toLocaleString()} kcal remaining;
+  document.getElementById('cal-bar').style.width = `${calPct}%`;
+  document.getElementById('cal-status').textContent = `${calPct}% reached`;
+  document.getElementById('cal-remaining').textContent = `${Math.round(calRemaining).toLocaleString()} kcal remaining`;
 
   // 2. Steps
   const steps = latestVitals.steps || 0;
@@ -118,6 +124,9 @@ function renderMonitoring() {
   document.getElementById('steps-bar').style.width = ${stepPct}%;
   document.getElementById('steps-percent').textContent = ${stepPct}% of daily goal;
   document.getElementById('step-status').textContent = stepPct >= 100 ? 'Goal reached!' : ${(stepTarget - steps).toLocaleString()} steps to go;
+  document.getElementById('steps-bar').style.width = `${stepPct}%`;
+  document.getElementById('steps-percent').textContent = `${stepPct}% of daily goal`;
+  document.getElementById('step-status').textContent = stepPct >= 100 ? 'Goal reached!' : `${(stepTarget - steps).toLocaleString()} steps to go`;
 
   // 3. Macros
   const loggedProtein = Math.round(todayMeals.reduce((sum, m) => sum + (m.protein_g || 0), 0));
@@ -126,22 +135,33 @@ function renderMonitoring() {
 
   document.getElementById('protein-progress').textContent = ${loggedProtein} / g;
   document.getElementById('protein-bar').style.width = ${Math.min(100, Math.round((loggedProtein / proteinTarget) * 100))}%;
+  document.getElementById('protein-progress').textContent = `${loggedProtein} / ${proteinTarget}g`;
+  document.getElementById('protein-bar').style.width = `${Math.min(100, Math.round((loggedProtein / proteinTarget) * 100))}%`;
 
   document.getElementById('carbs-progress').textContent = ${loggedCarbs} / g;
   document.getElementById('carbs-bar').style.width = ${Math.min(100, Math.round((loggedCarbs / carbsTarget) * 100))}%;
+  document.getElementById('carbs-progress').textContent = `${loggedCarbs} / ${carbsTarget}g`;
+  document.getElementById('carbs-bar').style.width = `${Math.min(100, Math.round((loggedCarbs / carbsTarget) * 100))}%`;
 
   document.getElementById('fat-progress').textContent = ${loggedFat} / g;
   document.getElementById('fat-bar').style.width = ${Math.min(100, Math.round((loggedFat / fatTarget) * 100))}%;
+  document.getElementById('fat-progress').textContent = `${loggedFat} / ${fatTarget}g`;
+  document.getElementById('fat-bar').style.width = `${Math.min(100, Math.round((loggedFat / fatTarget) * 100))}%`;
 
   // 4. Sleep & Weight
   const sleepHours = latestVitals.sleep_duration_min ? Number((latestVitals.sleep_duration_min / 60).toFixed(1)) : 0;
   document.getElementById('sleep-progress').textContent = ${sleepHours} /  hrs;
   document.getElementById('sleep-bar').style.width = ${Math.min(100, Math.round((sleepHours / sleepTarget) * 100))}%;
+  document.getElementById('sleep-progress').textContent = `${sleepHours} / ${sleepTarget} hrs`;
+  document.getElementById('sleep-bar').style.width = `${Math.min(100, Math.round((sleepHours / sleepTarget) * 100))}%`;
 
   const curWt = latestVitals.weight || profile.weight;
   document.getElementById('cur-weight').textContent = curWt ? ${curWt.toFixed(1)} kg : '—';
   document.getElementById('target-weight-display').textContent = targetWeight !== '—' ? ${Number(targetWeight).toFixed(1)} kg : 'Not set';
+  document.getElementById('cur-weight').textContent = curWt ? `${curWt.toFixed(1)} kg` : '—';
+  document.getElementById('target-weight-display').textContent = targetWeight !== '—' ? `${Number(targetWeight).toFixed(1)} kg` : 'Not set';
 }
+
 
 async function loadAllGoalsData() {
   try {
