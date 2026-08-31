@@ -370,7 +370,7 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   cursor: pointer;
 }
 
-/* Profile read-only mode */
+/* Profile / Goals read-only mode */
 .profile-readonly input:disabled,
 .profile-readonly select:disabled,
 #profile-form #email:disabled {
@@ -384,19 +384,23 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
 }
 
 /* Hide dropdown arrow on disabled selects (only show when editing) */
-#profile-form select:disabled {
+#profile-form select:disabled,
+#goals-page-form select:disabled {
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
 }
 
-/* Never show number spinners in profile form */
+/* Never show number spinners in profile or goals form */
 #profile-form input[type="number"]::-webkit-inner-spin-button,
-#profile-form input[type="number"]::-webkit-outer-spin-button {
+#profile-form input[type="number"]::-webkit-outer-spin-button,
+#goals-page-form input[type="number"]::-webkit-inner-spin-button,
+#goals-page-form input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-#profile-form input[type="number"] {
+#profile-form input[type="number"],
+#goals-page-form input[type="number"] {
   -moz-appearance: textfield;
 }
 
