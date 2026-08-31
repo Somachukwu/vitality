@@ -4,9 +4,9 @@ import { initLucide } from './utils.js';
 export const NAV = [
   { href: 'dashboard.html', label: 'Home', icon: 'home' },
   { href: 'food-log.html', label: 'Food', icon: 'utensils' },
-  { href: 'vitals.html', label: 'Vitals', icon: 'activity' },
-  { href: 'goals.html', label: 'Goals', icon: 'target' },
   { href: 'recommendations.html', label: 'Insights', icon: 'sparkles' },
+  { href: 'goals.html', label: 'Goals', icon: 'target' },
+  { href: 'vitals.html', label: 'Vitals', icon: 'activity' },
   { href: 'profile.html', label: 'Profile', icon: 'user' },
 ];
 
@@ -21,8 +21,8 @@ export function renderNav(activeHref) {
     <a href="food-log.html" class="${activeHref === 'food-log.html' ? 'active' : ''}">
       <i data-lucide="utensils"></i><span>Food</span>
     </a>
-    <a href="vitals.html" class="${activeHref === 'vitals.html' ? 'active' : ''}">
-      <i data-lucide="activity"></i><span>Vitals</span>
+    <a href="recommendations.html" class="${activeHref === 'recommendations.html' ? 'active' : ''}">
+      <i data-lucide="sparkles"></i><span>Insights</span>
     </a>
     <a href="goals.html" class="${activeHref === 'goals.html' ? 'active' : ''}">
       <i data-lucide="target"></i><span>Goals</span>
@@ -32,6 +32,7 @@ export function renderNav(activeHref) {
     </button>
   `;
   document.body.appendChild(bn);
+
 
   // 2. Mobile Drawer Overlay Modal
   const drawerOverlay = document.createElement('div');

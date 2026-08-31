@@ -55,17 +55,47 @@
 
         <!-- Goals & Targets Card -->
         <section class="card">
-          <div class="row between align-center">
-            <div>
-              <div class="card-title" style="margin-bottom:0.25rem">Goals &amp; targets</div>
-              <p class="text-sm muted" id="profile-goal-summary">Configure and monitor your daily calorie, macro, step, sleep, and weight targets.</p>
+          <div class="row between mb-2">
+            <div class="card-title" style="margin-bottom:0">Goals &amp; targets</div>
+            <button class="btn btn-ghost" type="button" id="edit-goals-btn">
+              <i data-lucide="pencil"></i> <span class="hide-mobile">Edit targets</span>
+            </button>
+          </div>
+          <div class="stack profile-readonly">
+            <div class="grid grid-2">
+              <div>
+                <label>Primary fitness goal</label>
+                <input id="profile-goal-val" disabled />
+              </div>
+              <div>
+                <label>Daily activity level</label>
+                <input id="profile-activity-val" disabled />
+              </div>
+              <div>
+                <label>Daily calorie target</label>
+                <input id="profile-cal-val" disabled />
+              </div>
+              <div>
+                <label>Target weight</label>
+                <input id="profile-target-weight-val" disabled />
+              </div>
             </div>
-            <a href="goals.html" class="btn btn-ghost text-xs" style="text-decoration:none; font-weight:600; padding:0.4rem 0.75rem; border-radius:999px; display:inline-flex; align-items:center; gap:0.35rem">
-              <i data-lucide="target"></i> Manage targets →
-            </a>
+            <div class="grid grid-3">
+              <div>
+                <label>Protein target</label>
+                <input id="profile-protein-val" disabled />
+              </div>
+              <div>
+                <label>Daily steps target</label>
+                <input id="profile-steps-val" disabled />
+              </div>
+              <div>
+                <label>Daily sleep target</label>
+                <input id="profile-sleep-val" disabled />
+              </div>
+            </div>
           </div>
         </section>
-
 
         <!-- Notifications Card -->
         <section class="card">
@@ -122,20 +152,19 @@
         <section class="card">
           <div class="card-title">Connected services</div>
           <div class="list">
-            <div class="list-item" style="flex-direction:column; gap:0.75rem" id="google-health-row">
-              <div class="row gap-sm align-center" style="width:100%">
-                <i data-lucide="activity" style="color:var(--teal)"></i>
-                <div style="flex:1; min-width:0">
-                  <strong>Google Health</strong>
-                  <div class="text-xs muted" id="google-health-sub">Loading…</div>
-                </div>
+            <div class="list-item" id="google-health-row">
+              <i data-lucide="activity"></i>
+              <div style="flex:1; min-width:0">
+                <strong>Google Health</strong>
+                <div class="text-xs muted" id="google-health-sub">Loading…</div>
               </div>
-              <div class="row between align-center" style="width:100%; border-top:1px solid var(--border); padding-top:0.6rem" id="google-health-actions">
+              <div class="row gap-xs align-center flex-wrap" style="justify-content:flex-end" id="google-health-actions">
                 <!-- Populated by profile.js -->
               </div>
             </div>
           </div>
         </section>
+
 
 
         <!-- Account Card -->

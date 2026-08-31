@@ -1,4 +1,4 @@
-﻿import { requireAuth } from './auth.js';
+import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { toast, applyStoredTheme, initThemeToggle, initLucide } from './utils.js';
 import { api } from './api.js';
@@ -209,8 +209,18 @@ function setGoalsEditMode(editing) {
   if (editing) initLucide();
 }
 
-setGoalsEditMode(false);
-loadAllGoalsData();
+// If redirected with ?edit=1 (e.g. from Profile page "Edit targets" button)
+const urlParams = new URLSearchParams(window.location.search);
+const shouldStartInEditMode = urlParams.get('edit') === '1';
+
+setGoalsEditMode(shouldStartInEditMode);
+loadAllGoalsData().then(() => {
+  if (shouldStartInEditMode) {
+    captureSnapshot();
+    setGoalsEditMode(true);
+    computeSmartRecommendations();
+  }
+});
 
 document.getElementById('edit-goals-btn').addEventListener('click', () => {
   captureSnapshot();
@@ -223,6 +233,7 @@ document.getElementById('cancel-goals-btn').addEventListener('click', () => {
   setGoalsEditMode(false);
   computeSmartRecommendations();
 });
+
 
 document.getElementById('goal_type').addEventListener('change', computeSmartRecommendations);
 document.getElementById('activity_level').addEventListener('change', computeSmartRecommendations);

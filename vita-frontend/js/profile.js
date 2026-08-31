@@ -39,11 +39,21 @@ async function loadProfile() {
       weight_gain: 'Build muscle / Gain weight',
       maintenance: 'General wellness / Maintain weight',
     }[profile.goal_type] || 'General wellness';
-    const calTarget = profile.daily_calorie_target ? `${profile.daily_calorie_target} kcal/day` : '2,000 kcal/day';
-    const goalSummaryEl = document.getElementById('profile-goal-summary');
-    if (goalSummaryEl) {
-      goalSummaryEl.textContent = `Goal: ${goalLabel} · Target: ${calTarget}. Tap to configure and monitor all targets.`;
-    }
+    const targets = profile.notification_preferences?.targets || {};
+    const actLabel = {
+      sedentary: 'Sedentary',
+      light: 'Lightly Active',
+      moderate: 'Moderately Active',
+      very_active: 'Very Active',
+    }[targets.activity_level] || 'Moderately Active';
+
+    set('profile-goal-val', goalLabel);
+    set('profile-activity-val', actLabel);
+    set('profile-cal-val', profile.daily_calorie_target ? `${profile.daily_calorie_target} kcal` : '2,000 kcal');
+    set('profile-target-weight-val', targets.target_weight ? `${targets.target_weight} kg` : 'Not set');
+    set('profile-protein-val', targets.target_protein ? `${targets.target_protein}g` : '130g');
+    set('profile-steps-val', targets.target_steps ? `${Number(targets.target_steps).toLocaleString()} steps` : '10,000 steps');
+    set('profile-sleep-val', targets.target_sleep ? `${targets.target_sleep} hrs` : '8.0 hrs');
 
     const notifPref = profile.notification_preferences || {};
     const pushEl  = document.getElementById('notif-push');
@@ -79,6 +89,11 @@ setPersonalEditMode(false);
 loadProfile();
 loadDevices();
 
+// Edit goals button redirects to goals.html in edit mode
+document.getElementById('edit-goals-btn')?.addEventListener('click', () => {
+  window.location.href = 'goals.html?edit=1';
+});
+
 // Personal details listeners
 document.getElementById('edit-btn').addEventListener('click', () => {
   capturePersonalSnapshot();
@@ -88,6 +103,7 @@ document.getElementById('cancel-btn').addEventListener('click', () => {
   restorePersonalSnapshot();
   setPersonalEditMode(false);
 });
+
 
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -300,16 +316,15 @@ function renderGoogleStatus(status) {
     sub.textContent = (status.google_email || 'Connected') + ' · ' + lastSync;
 
     actions.innerHTML = `
-      <span class="badge badge-success">&#9679; Connected</span>
-      <div class="row gap-xs align-center">
-        <button class="btn btn-ghost text-xs" id="sync-google-btn" type="button">
-          <i data-lucide="refresh-cw"></i> <span class="hide-mobile">Sync now</span>
-        </button>
-        <button class="btn btn-ghost text-xs" id="disconnect-google-btn" type="button" style="color:#b91c1c">
-          Disconnect
-        </button>
-      </div>
+      <span class="badge badge-success">&#9679;<span class="hide-mobile"> Connected</span></span>
+      <button class="btn btn-ghost text-xs" id="sync-google-btn" type="button">
+        <i data-lucide="refresh-cw"></i> <span class="hide-mobile">Sync now</span>
+      </button>
+      <button class="btn btn-ghost text-xs" id="disconnect-google-btn" type="button" style="color:#b91c1c">
+        Disconnect
+      </button>
     `;
+
     initLucide();
 
     document.getElementById('sync-google-btn')?.addEventListener('click', syncGoogleHealth);

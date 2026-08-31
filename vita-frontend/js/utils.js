@@ -101,7 +101,11 @@ export function waitForChart(timeout = 350) {
   });
 }
 export function applyStoredTheme() {
-  if (localStorage.getItem('theme') === 'dark') document.documentElement.classList.add('dark');
+  if (localStorage.getItem('theme') === 'dark') {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
 }
 
 export function updateThemeIcon() {
@@ -110,7 +114,9 @@ export function updateThemeIcon() {
     btn.innerHTML = `<i data-lucide="${isDark ? 'sun' : 'moon'}"></i>`;
     btn.setAttribute('aria-label', isDark ? 'Switch to light theme' : 'Switch to dark theme');
   });
-  if (window.lucide) window.lucide.createIcons();
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
+  }
 }
 
 export function toggleTheme() {
@@ -120,12 +126,18 @@ export function toggleTheme() {
 }
 
 export function initThemeToggle(btnId = 'theme-btn') {
+  applyStoredTheme();
   updateThemeIcon();
   const btns = document.querySelectorAll('#' + btnId + ', .theme-toggle-btn');
   btns.forEach((btn) => {
     btn.onclick = toggleTheme;
   });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateThemeIcon);
+  }
+  window.addEventListener('load', updateThemeIcon);
 }
+
 
 export function setSyncingState(syncing) {
   const syncBtns = document.querySelectorAll('#sync-btn, #sync-btn-2, #sync-google-btn, #sync');
