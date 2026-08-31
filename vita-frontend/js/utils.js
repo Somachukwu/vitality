@@ -74,7 +74,24 @@ export function formatTime(ts) {
   if (isNaN(d.getTime())) return '';
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-export function todayISO() { return new Date().toISOString().slice(0, 10); }
+export function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function getLocalTimestampDate(ts) {
+  if (!ts) return '';
+  const iso = (typeof ts === 'string' && !ts.endsWith('Z') && !ts.includes('+')) ? ts + 'Z' : ts;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(ts).slice(0, 10);
+  return getLocalDateString(d);
+}
+
+export function todayISO() {
+  return getLocalDateString();
+}
 
 export function toast(msg, type = 'success') {
   let wrap = document.querySelector('.toast-wrap');

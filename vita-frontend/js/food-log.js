@@ -1,6 +1,6 @@
 import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
-import { formatDate, toast, initLucide, applyStoredTheme, initThemeToggle, compressImage } from './utils.js';
+import { formatDate, toast, initLucide, applyStoredTheme, initThemeToggle, compressImage, getLocalTimestampDate } from './utils.js';
 import { NIGERIAN_FOODS } from './mock.js';
 import { api, resolveApiUrl } from './api.js';
 
@@ -202,7 +202,7 @@ async function loadMeals() {
 function renderHistory() {
   const host = document.getElementById('history');
   const filterDate = dateFilter.value;
-  const filtered = filterDate ? meals.filter(m => m.timestamp.slice(0, 10) === filterDate) : meals;
+  const filtered = filterDate ? meals.filter(m => getLocalTimestampDate(m.timestamp) === filterDate) : meals;
   if (!filtered.length) {
     host.innerHTML = `<div class="card center muted">No meals for this day.</div>`;
     return;

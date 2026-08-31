@@ -124,12 +124,24 @@ def ingest_vitals(
     return record
 
 
-def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
+def _build_latest_vitals(user: User, db: Session, target_date_str: Optional[str] = None) -> VitalsLatestOut:
     """Build the latest vitals snapshot with proper today-only daily metrics."""
-    now_utc = datetime.now(timezone.utc)
-    today_start = now_utc.replace(
-        hour=0, minute=0, second=0, microsecond=0, tzinfo=None
-    )
+    if target_date_str:
+        try:
+            parsed_date = datetime.strptime(target_date_str.strip()[:10], "%Y-%m-%d").date()
+            today_start = datetime.combine(parsed_date, datetime.min.time())
+        except ValueError:
+            now_utc = datetime.now(timezone.utc)
+            today_start = now_utc.replace(
+                hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+            )
+    else:
+        now_utc = datetime.now(timezone.utc)
+        today_start = now_utc.replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=None
+        )
+
+    today_end = today_start + timedelta(days=1)
 
     # Smart on-load auto-sync (if connected and >15 min since last sync)
     token_row = (
@@ -138,6 +150,7 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
         .first()
     )
     if token_row:
+        now_utc = datetime.now(timezone.utc)
         last_sync = token_row.last_synced_at
         if last_sync is None or last_sync < now_utc.replace(tzinfo=None) - timedelta(minutes=15):
             try:
@@ -176,7 +189,7 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
     if out.weight is None and user.weight is not None:
         out.weight = user.weight
 
-    # ── Daily aggregates: TODAY only ────────────────────────────────────
+    # ── Daily aggregates: TODAY only (reset at 12:00 AM) ────────────────
     for field in _DAILY_AGGREGATE_FIELDS:
         setattr(out, field, None)
 
@@ -185,6 +198,7 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
         .filter(
             Vitals.user_id == user.id,
             Vitals.recorded_at >= today_start,
+            Vitals.recorded_at < today_end,
         )
         .order_by(Vitals.recorded_at.desc())
         .all()
@@ -226,10 +240,11 @@ def _build_latest_vitals(user: User, db: Session) -> VitalsLatestOut:
 
 @router.get("/latest", response_model=VitalsLatestOut)
 def get_latest_vitals(
+    date_str: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return _build_latest_vitals(current_user, db)
+    return _build_latest_vitals(current_user, db, target_date_str=date_str)
 
 
 @router.get("/history", response_model=list[VitalsDailySummary])

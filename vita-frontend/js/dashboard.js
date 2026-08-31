@@ -1,6 +1,6 @@
 import { requireAuth, getUser, saveUser } from './auth.js';
 import { renderNav } from './nav.js';
-import { countUp, vitalsStatus, statusDot, formatTime, formatSleepDuration, toast, applyStoredTheme, initThemeToggle, setSyncingState, initLucide, waitForChart, computeBmi, bmiStatus } from './utils.js';
+import { countUp, vitalsStatus, statusDot, formatTime, formatSleepDuration, toast, applyStoredTheme, initThemeToggle, setSyncingState, initLucide, waitForChart, computeBmi, bmiStatus, todayISO, getLocalTimestampDate } from './utils.js';
 import { api, resolveApiUrl } from './api.js';
 
 applyStoredTheme();
@@ -10,6 +10,20 @@ initThemeToggle();
 
 let user = getUser();
 renderDynamicGreeting(user.name?.split(' ')[0] || 'there');
+
+// Immediately render initial contextual card so morning tips are visible without waiting for network calls
+try {
+  const initialCard = resolveContextualCard({
+    userProfile: user,
+    topRec: null,
+    vitalsData: null,
+    mealsData: [],
+    calorieTarget: user.daily_calorie_target || 2200,
+  });
+  if (initialCard) {
+    renderRec(initialCard);
+  }
+} catch { /* ignore */ }
 
 
 let macrosChart = null;
@@ -62,9 +76,9 @@ function renderVitals(v) {
   safeCountUp('v-hr',          v.heartRate, 0);
   safeCountUp('v-spo2',        v.spo2, 1);
   safeCountUp('v-sleep-score', v.sleepScore, 0);
-  safeCountUp('v-cal-burned',  v.caloriesBurned, 0);
-  safeCountUp('v-steps',       v.steps, 0);
-  safeCountUp('v-dist',        v.distanceKm, 1);
+  safeCountUp('v-cal-burned',  v.caloriesBurned ?? 0, 0);
+  safeCountUp('v-steps',       v.steps ?? 0, 0);
+  safeCountUp('v-dist',        v.distanceKm ?? 0, 1);
   safeCountUp('v-wt',          v.weight, 1);
 
   document.getElementById('s-hr').innerHTML   = statusDot(vitalsStatus('heartRate',   v.heartRate));
@@ -281,14 +295,35 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
   const isMorningWindow = hour >= 0 && hour < 12; // 12:00 AM Midnight to 11:59 AM
 
-  // 1. Morning Window (Starting right at 12:00 AM Midnight)
-  if (isMorningWindow) {
+  const today = todayISO();
+  const joinDate = userProfile.created_at ? getLocalTimestampDate(userProfile.created_at) : '';
+  const isJoinedToday = joinDate === today;
+
+  // 1. New user who joined TODAY and has not configured targets yet:
+  // Show default getting started message on Day 1
+  if (isJoinedToday && !userProfile.daily_calorie_target) {
+    if (topRec?.rule_id === 'lifestyle.set_daily_targets') {
+      return topRec;
+    }
+    return {
+      badge: 'Getting Started 🚀',
+      title: 'Set Your Daily Health Targets',
+      message: 'Personalize your daily calorie, macro, step, and sleep targets to start tracking your progress and receive tailored AI health insights.',
+      action_data: { action_label: 'Configure Targets', route: 'goals.html?edit=1' },
+      rule_id: 'lifestyle.set_daily_targets',
+    };
+  }
+
+  // 2. Morning Window (or anytime before the first meal of the day is logged):
+  // UNTIL A MEAL IS LOGGED, GOOD MORNING INSIGHTS ARE THE PRIORITY EVERY MORNING!
+  // (Starts the next morning for new users even if no meal was logged the day they joined).
+  if (isMorningWindow || (mealsCount === 0 && hour < 14)) {
     const morningRec = {
       ...getRotatingMorningInsight(firstName),
       tabLabel: '☀️ Morning Insight',
     };
 
-    // If there is an active Critical Alert from yesterday/today, constantly alternate between the two!
+    // If an active Critical Alert exists, constantly alternate between Morning Tip & Critical Alert!
     if (isCritical) {
       return {
         isAlternating: true,
@@ -299,26 +334,18 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
       };
     }
 
-    // New user with unconfigured targets
-    if (!userProfile.daily_calorie_target && topRec?.rule_id === 'lifestyle.set_daily_targets') {
-      return topRec;
+    // Until a meal is logged, Good Morning Insight is the absolute priority!
+    if (mealsCount === 0) {
+      return morningRec;
     }
-
-    // Otherwise, the fresh morning poetic insight is the very first insight of the new day
-    return morningRec;
   }
 
-  // 2. Critical Alert outside of morning window (12:00 PM – 11:59 PM)
+  // 3. Critical Alert outside of morning / when meals are logged
   if (isCritical) {
     return topRec;
   }
 
-  // 3. Unconfigured Targets for New Users
-  if (!userProfile.daily_calorie_target && topRec?.rule_id === 'lifestyle.set_daily_targets') {
-    return topRec;
-  }
-
-  // 4. Multi-Target Milestone Celebrations (Anytime today)
+  // 4. Multi-Target Milestone Celebrations (After meals or activity logged)
   // A. Steps Target Milestone
   if (targetSteps > 0 && steps >= targetSteps) {
     return {
@@ -407,7 +434,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     }
   }
 
-  // C. Midday (12:00 PM – 2:59 PM) & Afternoon (3:00 PM – 5:59 PM) Meal Reminders
+  // C. Midday (12:00 PM – 2:59 PM) & Afternoon (3:00 PM – 5:59 PM) Meal Reminders (only if 0 meals logged)
   if (hour >= 12 && hour < 15 && mealsCount === 0) {
     return {
       badge: 'Fuel Check-In 🥗',
@@ -427,9 +454,9 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     };
   }
 
-  // D. Short Sleep (< 6.5 hours) Guidance
+  // D. Short Sleep (< 6.5 hours) Guidance (if sleep recorded)
   if (sleepHours > 0 && sleepHours < 6.5 && hour < 14) {
-    if (goal === 'lose') {
+    if (goal === 'lose' || goal === 'weight_loss') {
       return {
         badge: 'Sleep & Metabolism 🌙',
         title: 'Short Sleep & Appetite Regulation',
@@ -437,7 +464,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
         action_data: { action_label: 'View Sleep', route: 'vitals.html' },
         rule_id: 'sleep.short_loss',
       };
-    } else if (goal === 'gain') {
+    } else if (goal === 'gain' || goal === 'weight_gain') {
       return {
         badge: 'Recovery Alert 🌙',
         title: 'Short Sleep & Muscle Recovery',
@@ -456,8 +483,8 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     }
   }
 
-  // 6. Return most recent top recommendation from backend, or null
-  return topRec || null;
+  // 6. Return most recent top recommendation from backend, or morning insight fallback
+  return topRec || getRotatingMorningInsight(firstName);
 }
 
 function renderRecFallback() {
@@ -547,11 +574,12 @@ async function loadAll() {
     calorieGoal = profile.daily_calorie_target || 2200;
   } catch { /* fall back to cached/default goal */ }
 
-  // 1. Fetch Vitals
+  // 1. Fetch Vitals (for user's local date)
   let latestWeight = null;
   let adaptedVitals = null;
+  const today = todayISO();
   try {
-    const v = await api.get('/vitals/latest');
+    const v = await api.get('/vitals/latest?date_str=' + today);
     adaptedVitals = adaptVitals(v);
     renderVitals(adaptedVitals);
     latestWeight = v.weight;
@@ -562,12 +590,11 @@ async function loadAll() {
   // 2. BMI
   renderBmi(latestWeight ?? user.weight, user.height);
 
-  // 3. Fetch Meals (today)
+  // 3. Fetch Meals (today only, reset at 12:00 AM local time)
   let todayMeals = [];
   try {
     const rawMeals = await api.get('/meals/');
-    const today = new Date().toISOString().slice(0, 10);
-    todayMeals = rawMeals.filter(m => m.logged_at.slice(0, 10) === today).map(adaptMeal);
+    todayMeals = rawMeals.filter(m => getLocalTimestampDate(m.logged_at) === today).map(adaptMeal);
     await renderNutrition(todayMeals, calorieGoal);
     renderRecentMeals(todayMeals);
   } catch {
@@ -636,7 +663,7 @@ document.getElementById('sync-btn-2').addEventListener('click', (e) => syncNow(e
 // Poll vitals every 30s
 setInterval(async () => {
   try {
-    const v = await api.get('/vitals/latest');
+    const v = await api.get('/vitals/latest?date_str=' + todayISO());
     renderVitals(adaptVitals(v));
     renderBmi(v.weight ?? user.weight, user.height);
   } catch { /* ignore */ }

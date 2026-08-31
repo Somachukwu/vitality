@@ -1,6 +1,6 @@
 import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
-import { toast, applyStoredTheme, initThemeToggle, initLucide } from './utils.js';
+import { toast, applyStoredTheme, initThemeToggle, initLucide, todayISO, getLocalTimestampDate } from './utils.js';
 import { api } from './api.js';
 
 applyStoredTheme();
@@ -273,17 +273,17 @@ async function loadAllGoalsData() {
 
     computeSmartRecommendations();
 
-    // Fetch meals & vitals for today
+    // Fetch meals & vitals for today (reset at 12:00 AM local time)
+    const today = todayISO();
     try {
       const allMeals = await api.get('/meals/');
-      const today    = new Date().toISOString().slice(0, 10);
-      todayMeals = (allMeals || []).filter((m) => (m.logged_at || '').slice(0, 10) === today);
+      todayMeals = (allMeals || []).filter((m) => getLocalTimestampDate(m.logged_at) === today);
     } catch {
       todayMeals = [];
     }
 
     try {
-      latestVitals = (await api.get('/vitals/latest')) || {};
+      latestVitals = (await api.get('/vitals/latest?date_str=' + today)) || {};
     } catch {
       latestVitals = {};
     }
