@@ -33,7 +33,6 @@ export async function loginApi(email, password) {
 }
 
 export async function registerApi(name, email, password, age, sex, goalType) {
-export async function registerApi(name, email, password, age, sex, height, activityLevel, goalType) {
   const goalMap = { lose_weight: 'weight_loss', gain_weight: 'weight_gain', maintain: 'maintenance', maintenance: 'maintenance', weight_loss: 'weight_loss', weight_gain: 'weight_gain' };
   const res = await fetch(`${BASE_URL}/auth/register`, {
     method: 'POST',
@@ -42,9 +41,6 @@ export async function registerApi(name, email, password, age, sex, height, activ
       name, email, password,
       age: age ? Number(age) : null,
       sex: sex || null,
-      sex: sex || 'male',
-      height: height ? Number(height) : null,
-      activity_level: activityLevel || 'moderate',
       goal_type: goalMap[goalType] || 'maintenance',
     }),
   });

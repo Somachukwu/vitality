@@ -124,15 +124,6 @@ def generate_and_persist_recommendations(
 
     # 1. Build UserProfile adapter
     sex_enum = Sex.FEMALE if (user.sex or "").lower() == "female" else Sex.MALE
-    targets = (user.notification_preferences or {}).get("targets", {})
-    activity_str = str(targets.get("activity_level") or "moderate").lower()
-    activity_enum = {
-        "sedentary": ActivityLevel.SEDENTARY,
-        "light": ActivityLevel.LIGHT,
-        "moderate": ActivityLevel.MODERATE,
-        "very_active": ActivityLevel.VERY_ACTIVE,
-    }.get(activity_str, ActivityLevel.MODERATE)
-
     profile = UserProfile(
         user_id=str(user.id),
         age=user.age or 25,
@@ -140,7 +131,6 @@ def generate_and_persist_recommendations(
         height_cm=float(user.height) if user.height else 170.0,
         weight_kg=float(user.weight) if user.weight else 70.0,
         activity_level=ActivityLevel.MODERATE,
-        activity_level=activity_enum,
         goal=user.goal_type or "maintenance",
         target_calories=float(user.daily_calorie_target) if user.daily_calorie_target else None,
     )
