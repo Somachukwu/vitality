@@ -4,7 +4,7 @@ Vitals and Activity rules operating on DailySnapshot facts.
 
 from typing import Any
 
-from ..models import Category, DailySnapshot, Priority, Recommendation, Tier
+from ..models import Category, DailySnapshot, Priority, Recommendation, Tier, UserProfile
 from ..rules_engine import Rule
 
 
@@ -12,19 +12,44 @@ def _snapshot(facts: dict[str, Any]) -> DailySnapshot:
     return facts["snapshot"]
 
 
+def _profile(facts: dict[str, Any]) -> UserProfile:
+    return facts.get("profile")
+
+
 def _rule_daily_short_sleep_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
+    p = _profile(facts)
+    goal = p.normalized_goal if p else "maintenance"
+    hours = s.total_sleep_hours or 5.5
+
+    if goal == "lose":
+        title = "Short Sleep & Appetite Regulation"
+        msg = (
+            f"You logged {hours:.1f} hours of sleep last night. In a calorie deficit, short sleep (<6.5h) "
+            "elevates the hunger hormone ghrelin and increases muscle catabolism. Aim for 8.0-8.5 hours tonight "
+            "to protect your lean muscle and keep appetite stable."
+        )
+    elif goal == "gain":
+        title = "Short Sleep & Muscle Recovery"
+        msg = (
+            f"You logged {hours:.1f} hours of sleep last night. Over 70% of growth hormone release and muscle repair "
+            "occur during deep sleep. Prioritize 8.5-9.0 hours of restorative sleep tonight to maximize your hypertrophy gains."
+        )
+    else:
+        title = "Prioritize Restorative Sleep Tonight"
+        msg = (
+            f"You logged {hours:.1f} hours of sleep last night. Short sleep (<6.5h) impairs cognitive focus and "
+            "elevates cortisol. Aim for an earlier, calming wind-down routine tonight to recharge your vitality."
+        )
+
     return Recommendation(
         category=Category.HEALTH_ALERT.value,
         priority=Priority.MEDIUM,
         tier=Tier.PRIMARY_ACTION,
         rule_id="vitals.daily_short_sleep",
-        title="Short Sleep Duration",
-        message=(
-            f"You logged {s.total_sleep_hours:.1f} hours of sleep last night. "
-            "Short sleep can diminish cognitive focus and increase appetite. Aim for a calming wind-down routine tonight."
-        ),
-        evidence={"total_sleep_hours": s.total_sleep_hours},
+        title=title,
+        message=msg,
+        evidence={"total_sleep_hours": hours, "goal": goal},
         action_data={"action_label": "View Sleep", "route": "vitals.html"},
         cooldown_days=2,
         confidence=0.9,
@@ -116,7 +141,7 @@ VITALS_RULES = [
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
             _snapshot(f).total_sleep_hours is not None
-            and 0 < _snapshot(f).total_sleep_hours < 6.0
+            and 0 < _snapshot(f).total_sleep_hours < 6.5
         ),
         action=_rule_daily_short_sleep_action,
         weight=70,

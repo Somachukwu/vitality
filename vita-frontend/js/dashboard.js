@@ -9,7 +9,7 @@ renderNav('dashboard.html');
 initThemeToggle();
 
 let user = getUser();
-document.getElementById('hello-name').textContent = user.name?.split(' ')[0] || 'there';
+renderDynamicGreeting(user.name?.split(' ')[0] || 'there');
 
 
 let macrosChart = null;
@@ -100,6 +100,233 @@ function renderBmi(weightKg, heightCm) {
   statusEl.innerHTML = statusDot(status, label);
 }
 
+// Dynamic time-of-day greeting
+function renderDynamicGreeting(name) {
+  const hour = new Date().getHours();
+  let greeting = 'Good day';
+  if (hour >= 5 && hour < 12) {
+    greeting = 'Good morning';
+  } else if (hour >= 12 && hour < 18) {
+    greeting = 'Good afternoon';
+  } else if (hour >= 18 && hour < 21) {
+    greeting = 'Good evening';
+  } else {
+    greeting = 'Good night';
+  }
+  const greetingEl = document.getElementById('greeting-text');
+  if (greetingEl) greetingEl.textContent = greeting;
+  const nameEl = document.getElementById('hello-name');
+  if (nameEl) nameEl.textContent = name || 'there';
+}
+
+const MORNING_WRITEUPS = [
+  "A fresh dawn brings new momentum, {name}! Nourish your body with intention, welcome movement with every step, and let’s make today vibrant. Don't forget to log your breakfast!",
+  "Rise and thrive, {name}! Today’s vitality is crafted note-by-note—from a glass of water to your first morning walk. Step into the day with clarity and purpose.",
+  "Every sunrise is an invitation to feel your best. Fuel up with a balanced morning meal, take a deep breath, and let’s conquer your health targets today.",
+  "Good morning, {name}! Your health is built one mindful choice at a time. Let’s start strong today with wholesome nutrition and energizing morning movement.",
+  "A brand new day is here to support your growth. Listen to your body, celebrate every step, and nourish yourself with foods that energize your mind.",
+  "Morning light is your body’s cue to thrive. Hydrate, take in the fresh air, and log your breakfast to set a steady metabolic rhythm for the day ahead.",
+  "Good morning, {name}! Great journeys are forged by small, consistent moments. Make today count by staying active and fueling your body with wholesome goodness.",
+  "Rise with the sun, {name}! Let’s channel today’s energy toward your personal goals. Take a brisk walk, savor your meals, and keep your vitality soaring.",
+  "A peaceful morning leads to an empowered day. Dedicate today to self-care, balanced nutrition, and joyful movement with every stride.",
+  "Good morning, {name}! Yesterday is behind us, and today is brimming with possibilities. Nourish your body, stay hydrated, and embrace today’s movement.",
+  "Rise and shine, {name}! Consistency is your superpower. Let’s fuel your metabolism early and lay the foundation for a vibrant, productive day.",
+  "Dawn brings fresh vigor. Honor your body today with nutrient-dense foods, mindful breaths, and active steps toward your ultimate wellness.",
+  "Good morning, {name}! Step into the daylight with confidence. Log your morning meal, drink your first glass of water, and let’s make today extraordinary.",
+  "Every new morning is an opportunity to revitalize your health. Let’s move with joy, eat with awareness, and stay connected with your daily goals."
+];
+
+function getRotatingMorningInsight(name) {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 0);
+  const diff = now - startOfYear;
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+  
+  // 14-day permutation ensures no repetition twice within a 7-day period
+  const idx = Math.abs(dayOfYear) % MORNING_WRITEUPS.length;
+  const text = MORNING_WRITEUPS[idx].replace(/{name}/g, name || 'there');
+  return {
+    badge: 'Morning Vitality ☀️',
+    title: 'A Fresh Dawn for Your Wellness',
+    message: text,
+    action_data: { action_label: 'Log Breakfast', route: 'food-log.html' },
+    rule_id: 'dynamic.morning_poetic',
+  };
+}
+
+function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, calorieTarget }) {
+  const now = new Date();
+  const hour = now.getHours();
+  const firstName = userProfile.name?.split(' ')[0] || 'there';
+  const goal = userProfile.goal_type || 'maintenance';
+  const savedTargets = userProfile.notification_preferences?.targets || {};
+  const targetSteps = savedTargets.target_steps || 10000;
+  const targetProtein = savedTargets.target_protein || Math.round((userProfile.weight || 70) * 1.4);
+  const targetSleep = savedTargets.target_sleep || 8.0;
+
+  const steps = vitalsData?.steps || 0;
+  const sleepHours = vitalsData?.sleepDurationMin ? Number((vitalsData.sleepDurationMin / 60).toFixed(1)) : 0;
+  const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
+  const consumedProtein = Math.round((mealsData || []).flatMap(m => m.detectedFoods).reduce((sum, f) => sum + (f.protein || 0), 0));
+  const mealsCount = (mealsData || []).length;
+
+  // 1. Safety Alerts from backend rule engine ALWAYS win
+  if (topRec && (topRec.tier === 'safety' || topRec.priority === 'critical')) {
+    return topRec;
+  }
+
+  // 2. Unconfigured Targets for New Users
+  if (!userProfile.daily_calorie_target && topRec?.rule_id === 'lifestyle.set_daily_targets') {
+    return topRec;
+  }
+
+  // 3. Multi-Target Milestone Celebrations
+  // A. Steps Target Milestone
+  if (targetSteps > 0 && steps >= targetSteps) {
+    return {
+      badge: 'Milestone Achieved ⭐',
+      title: 'Daily Step Goal Crushed! 🎉',
+      message: `Incredible work, ${firstName}! You’ve hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
+      action_data: { action_label: 'View Activity', route: 'vitals.html' },
+      rule_id: 'milestone.steps_met',
+    };
+  }
+
+  // B. Protein Target Milestone
+  if (targetProtein > 0 && consumedProtein >= targetProtein && mealsCount >= 2) {
+    return {
+      badge: 'Macro Milestone 🥩',
+      title: 'Protein Target Achieved! 💪',
+      message: `Great work, ${firstName}! You logged ${consumedProtein}g of protein today, meeting your target for muscle preservation and cellular repair.`,
+      action_data: { action_label: 'View Food Log', route: 'food-log.html' },
+      rule_id: 'milestone.protein_met',
+    };
+  }
+
+  // C. Calorie Target Hit (Within ±100 kcal with >= 2 meals)
+  if (calorieTarget > 0 && mealsCount >= 2 && Math.abs(consumedCals - calorieTarget) <= 100) {
+    return {
+      badge: 'Energy Balance 🎯',
+      title: 'Calorie Target Hit! ⚖️',
+      message: `Spot on, ${firstName}! You’ve hit your daily energy intake target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal) with precision.`,
+      action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
+      rule_id: 'milestone.calories_met',
+    };
+  }
+
+  // 4. Time-Specific Dynamic Cards
+  // A. Evening Step Push (6:00 PM – 11:59 PM)
+  if (hour >= 18 && targetSteps > 0 && steps < targetSteps) {
+    const remaining = targetSteps - steps;
+    return {
+      badge: 'Evening Boost 🚶‍♂️',
+      title: 'Evening Step Boost',
+      message: `You’re at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
+      action_data: { action_label: 'Track Activity', route: 'vitals.html' },
+      rule_id: 'time.evening_steps_push',
+    };
+  }
+
+  // B. Evening 7:00 PM Calorie Guidance (7:00 PM – 11:59 PM)
+  if (hour >= 19 && calorieTarget > 0) {
+    if (goal === 'weight_loss' && consumedCals >= calorieTarget * 0.95) {
+      return {
+        badge: 'Calorie Target 🎯',
+        title: 'Calorie Target Locked In',
+        message: `You've hit your fat loss energy target for today (${consumedCals} / ${calorieTarget} kcal). Close your eating window for the night to protect your calorie deficit and promote overnight fat oxidation.`,
+        action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
+        rule_id: 'time.evening_deficit_lock',
+      };
+    }
+    if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.80) {
+      const remaining = calorieTarget - consumedCals;
+      return {
+        badge: 'Hypertrophy Fuel 🥩',
+        title: 'Fuel Your Muscle Growth',
+        message: `7 PM hypertrophy check: You're currently ${remaining} kcal below your surplus target. Add a nutrient-rich evening meal or protein shake to support overnight muscle protein synthesis.`,
+        action_data: { action_label: 'Log Evening Snack', route: 'food-log.html' },
+        rule_id: 'time.evening_surplus_needed',
+      };
+    }
+    if (goal === 'maintenance' && consumedCals < calorieTarget * 0.65) {
+      const remaining = calorieTarget - consumedCals;
+      return {
+        badge: 'Nutrition Reminder 🍽️',
+        title: 'Evening Nutrition Reminder',
+        message: `It's past 7 PM and you're running a significant calorie deficit (${remaining} kcal remaining). Log your dinner or an evening snack to support metabolism and recovery.`,
+        action_data: { action_label: 'Log Meal', route: 'food-log.html' },
+        rule_id: 'time.evening_general_deficit',
+      };
+    }
+    if (consumedCals > calorieTarget * 1.05) {
+      return {
+        badge: 'Energy Balance 🍵',
+        title: 'Daily Energy Target Reached',
+        message: `You've met your daily calorie target (${consumedCals} / ${calorieTarget} kcal). To prevent excess weight gain and aid digestive rest, switch to water or herbal tea for the evening.`,
+        action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
+        rule_id: 'time.evening_surplus_cap',
+      };
+    }
+  }
+
+  // C. Midday (12:00 PM – 2:59 PM) & Afternoon (3:00 PM – 5:59 PM) Meal Reminders
+  if (hour >= 12 && hour < 15 && mealsCount === 0) {
+    return {
+      badge: 'Fuel Check-In 🥗',
+      title: 'Midday Fuel Check-In',
+      message: `It’s noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
+      action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
+      rule_id: 'time.midday_meal_prompt',
+    };
+  }
+  if (hour >= 15 && hour < 18 && mealsCount === 0) {
+    return {
+      badge: 'Energy Check-In 🕒',
+      title: 'Afternoon Energy Check-In',
+      message: `3:00 PM check-in: No meals logged so far today. Staying fueled prevents afternoon energy dips and evening overeating. Remember to log your meals!`,
+      action_data: { action_label: 'Log Meal', route: 'food-log.html' },
+      rule_id: 'time.afternoon_meal_prompt',
+    };
+  }
+
+  // D. Short Sleep (< 6.5 hours) Guidance
+  if (sleepHours > 0 && sleepHours < 6.5 && hour < 14) {
+    if (goal === 'lose') {
+      return {
+        badge: 'Sleep & Metabolism 🌙',
+        title: 'Short Sleep & Appetite Regulation',
+        message: `You logged ${sleepHours} hours of sleep last night. In a calorie deficit, short sleep (<6.5h) elevates the hunger hormone ghrelin. Aim for 8.0-8.5 hours tonight to protect lean muscle and keep appetite stable.`,
+        action_data: { action_label: 'View Sleep', route: 'vitals.html' },
+        rule_id: 'sleep.short_loss',
+      };
+    } else if (goal === 'gain') {
+      return {
+        badge: 'Recovery Alert 🌙',
+        title: 'Short Sleep & Muscle Recovery',
+        message: `You logged ${sleepHours} hours of sleep last night. Over 70% of growth hormone release occurs during deep sleep. Prioritize 8.5-9.0 hours of restorative sleep tonight to maximize hypertrophy gains.`,
+        action_data: { action_label: 'View Sleep', route: 'vitals.html' },
+        rule_id: 'sleep.short_gain',
+      };
+    } else {
+      return {
+        badge: 'Restorative Rest 🌙',
+        title: 'Prioritize Restorative Sleep Tonight',
+        message: `You logged ${sleepHours} hours of sleep last night. Short sleep (<6.5h) elevates cortisol and slows recovery. Aim for an earlier, calming wind-down routine tonight.`,
+        action_data: { action_label: 'View Sleep', route: 'vitals.html' },
+        rule_id: 'sleep.short_wellness',
+      };
+    }
+  }
+
+  // E. Morning Insight (5:00 AM – 11:59 AM)
+  if (hour >= 5 && hour < 12) {
+    return getRotatingMorningInsight(firstName);
+  }
+
+  // 5. Fallback to backend top recommendation or default fallback
+  return topRec || null;
+}
+
 function renderRec(rec) {
   const textEl = document.getElementById('rec-text');
   const triggerEl = document.getElementById('rec-trigger');
@@ -107,7 +334,8 @@ function renderRec(rec) {
   if (!textEl) return;
 
   if (badgeEl) {
-    badgeEl.innerHTML = '<i data-lucide="sparkles"></i> ' + (rec.rule_id === 'lifestyle.set_daily_targets' ? 'Getting Started' : "Today's tip");
+    const badgeText = rec.badge || (rec.rule_id === 'lifestyle.set_daily_targets' ? 'Getting Started' : "Today's tip");
+    badgeEl.innerHTML = `<i data-lucide="sparkles"></i> ${badgeText}`;
     badgeEl.style.color = '';
   }
 
@@ -197,56 +425,69 @@ function renderRecentMeals(meals) {
 }
 
 async function loadAll() {
-  // Profile — source of truth for the calorie target and display name.
-  // The localStorage cache only ever holds {id, name, email} from login/register,
-  // so it never reflects a target the user set later in Profile settings.
   let calorieGoal = user.daily_calorie_target || 2200;
+  let userName = user.name?.split(' ')[0] || 'there';
+  renderDynamicGreeting(userName);
+
   try {
     const profile = await api.get('/users/profile');
     user = { ...user, ...profile };
     saveUser(user);
-    document.getElementById('hello-name').textContent = profile.name?.split(' ')[0] || 'there';
+    userName = profile.name?.split(' ')[0] || 'there';
+    renderDynamicGreeting(userName);
     calorieGoal = profile.daily_calorie_target || 2200;
   } catch { /* fall back to cached/default goal */ }
 
-  // Vitals
+  // 1. Fetch Vitals
   let latestWeight = null;
+  let adaptedVitals = null;
   try {
     const v = await api.get('/vitals/latest');
-    renderVitals(adaptVitals(v));
+    adaptedVitals = adaptVitals(v);
+    renderVitals(adaptedVitals);
     latestWeight = v.weight;
   } catch {
     document.getElementById('last-sync').textContent = 'No Google Health / Scale data yet';
   }
 
-  // BMI — last reading from the smart scale, falling back to the manually-entered profile weight
+  // 2. BMI
   renderBmi(latestWeight ?? user.weight, user.height);
 
-  // Recommendations (Top critical insight for today only)
+  // 3. Fetch Meals (today)
+  let todayMeals = [];
   try {
-    const topRec = await api.get('/recommendations/top');
-    if (topRec) {
-      renderRec(topRec);
+    const rawMeals = await api.get('/meals/');
+    const today = new Date().toISOString().slice(0, 10);
+    todayMeals = rawMeals.filter(m => m.logged_at.slice(0, 10) === today).map(adaptMeal);
+    await renderNutrition(todayMeals, calorieGoal);
+    renderRecentMeals(todayMeals);
+  } catch {
+    await renderNutrition([], calorieGoal);
+    document.getElementById('recent-meals').innerHTML = '<div class="card center muted">Could not load meals.</div>';
+  }
+
+  // 4. Fetch Top Recommendation & Resolve Contextual Smart Card
+  try {
+    let topRec = null;
+    try {
+      topRec = await api.get('/recommendations/top');
+    } catch { /* ignore */ }
+
+    const smartCard = resolveContextualCard({
+      userProfile: user,
+      topRec,
+      vitalsData: adaptedVitals,
+      mealsData: todayMeals,
+      calorieTarget: calorieGoal,
+    });
+
+    if (smartCard) {
+      renderRec(smartCard);
     } else {
       renderRecFallback();
     }
   } catch {
     renderRecFallback();
-  }
-
-
-
-  // Meals (today)
-  try {
-    const rawMeals = await api.get('/meals/');
-    const today = new Date().toISOString().slice(0, 10);
-    const todayMeals = rawMeals.filter(m => m.logged_at.slice(0, 10) === today).map(adaptMeal);
-    await renderNutrition(todayMeals, calorieGoal);
-    renderRecentMeals(todayMeals);
-  } catch {
-    // Still show the real goal (and an empty ring) even if today's meals failed to load
-    await renderNutrition([], calorieGoal);
-    document.getElementById('recent-meals').innerHTML = '<div class="card center muted">Could not load meals.</div>';
   }
 
   initLucide();

@@ -12,29 +12,51 @@ let profile = {};
 let todayMeals = [];
 let latestVitals = {};
 let smartRecs = {};
+let fieldRecommendations = {};
 
 const setVal = (id, v) => {
   const el = document.getElementById(id);
   if (el) el.value = v ?? '';
 };
 
+function applyFieldRecommendation(fieldId, value) {
+  const el = document.getElementById(fieldId);
+  if (!el || el.disabled) return;
+  el.value = value;
+  el.classList.remove('field-highlight');
+  void el.offsetWidth; // trigger reflow for animation
+  el.classList.add('field-highlight');
+  toast(`Applied ${value} for ${el.previousElementSibling?.textContent || 'target'}`);
+}
+
+function renderFieldChip(chipId, targetInputId, value, label, rationale) {
+  const chipEl = document.getElementById(chipId);
+  if (!chipEl) return;
+  chipEl.innerHTML = `<span>💡 ${label}: <strong>${value}</strong> <span class="muted text-xs">(${rationale})</span></span> <span class="chip-action">Apply →</span>`;
+  chipEl.classList.remove('hidden');
+  chipEl.onclick = () => applyFieldRecommendation(targetInputId, value);
+}
+
 function computeSmartRecommendations() {
-  const weight = Number(document.getElementById('target_weight')?.value || profile.weight || 70);
+  const curWeight = Number(profile.weight || 70);
+  const userEnteredWeight = Number(document.getElementById('target_weight')?.value);
+  const weight = userEnteredWeight > 0 ? userEnteredWeight : curWeight;
   const height = Number(profile.height || 170);
   const age    = Number(profile.age || 30);
   const sex    = (profile.sex || 'male').toLowerCase();
+  const isFemale = sex === 'female';
   const goal   = document.getElementById('goal_type')?.value || profile.goal_type || 'maintenance';
   const activity = document.getElementById('activity_level')?.value || 'moderate';
 
-  // Mifflin-St Jeor BMR
-  let bmr = 10 * weight + 6.25 * height - 5 * age;
-  if (sex === 'female') {
+  // 1. Mifflin-St Jeor BMR
+  let bmr = 10 * curWeight + 6.25 * height - 5 * age;
+  if (isFemale) {
     bmr -= 161;
   } else {
     bmr += 5;
   }
 
-  // Activity multipliers
+  // 2. Activity multipliers
   const actMultipliers = {
     sedentary:   1.2,
     light:       1.375,
@@ -51,40 +73,101 @@ function computeSmartRecommendations() {
     very_active: 'very active',
   }[activity] || 'moderate';
 
-  let targetCal     = tdee;
-  let targetProtein = Math.round(weight * 1.3);
-  let targetCarbs   = Math.round((tdee * 0.45) / 4);
-  let targetFat     = Math.round((tdee * 0.30) / 9);
-  let targetSteps   = 9000;
-  let targetSleep   = 8.0;
-  let targetWater   = Number((weight * 0.033).toFixed(1));
-  let rationale     = '';
+  const sexLabel = isFemale ? 'female' : 'male';
+
+  // 3. Goal & Sex-specific target calculations
+  let targetCal = tdee;
+  let calRationale = `Matches ${sexLabel} TDEE for balanced energy`;
+  let targetWeightRec = curWeight;
+  let weightRationale = `Maintain healthy current weight`;
+  let targetProtein = Math.round(curWeight * (isFemale ? 1.2 : 1.3));
+  let proteinRationale = `${isFemale ? '1.2' : '1.3'}g/kg for cellular repair`;
+  let targetCarbs = Math.round((tdee * 0.48) / 4);
+  let carbsRationale = `48% of cals for steady vitality`;
+  let targetFat = Math.round((tdee * (isFemale ? 0.30 : 0.28)) / 9);
+  let fatRationale = `${isFemale ? '30%' : '28%'} of cals for endocrine health`;
+  let targetSteps = isFemale ? 8000 : 8500;
+  let stepsRationale = `Cardiovascular & longevity baseline`;
+  let targetSleep = isFemale ? 8.0 : 7.5;
+  let sleepRationale = `Circadian restoration & mental focus`;
+  let targetWater = Number((curWeight * (isFemale ? 0.032 : 0.034)).toFixed(1));
+  let waterRationale = `${isFemale ? '32' : '34'}ml/kg fluid equilibrium`;
+  let overallRationale = '';
+
+  const heightM = height / 100;
+  const targetBmi = isFemale ? 22.0 : 23.0;
 
   if (goal === 'weight_loss') {
-    const floor = sex === 'female' ? 1200 : 1500;
-    targetCal     = Math.max(floor, tdee - 500);
-    targetProtein = Math.round(weight * 1.7);
-    targetCarbs   = Math.round((targetCal * 0.40) / 4);
-    targetFat     = Math.round((targetCal * 0.25) / 9);
-    targetSteps   = 10000;
-    targetSleep   = 8.0;
-    targetWater   = Number((weight * 0.035).toFixed(1));
-    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), a safe 500 kcal deficit targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong> for muscle preservation, <strong>${targetSteps.toLocaleString()} steps</strong>, and <strong>${targetWater}L hydration</strong>.`;
+    const floor = isFemale ? 1200 : 1500;
+    targetCal = Math.max(floor, tdee - 500);
+    calRationale = `TDEE - 500 kcal deficit (safety floor: ${floor} kcal)`;
+
+    const idealWeight = Math.round(targetBmi * heightM * heightM * 10) / 10;
+    targetWeightRec = Math.min(curWeight, idealWeight > 30 ? idealWeight : Math.round(curWeight * 0.9 * 10) / 10);
+    weightRationale = `Target BMI ~${targetBmi} for sustainable fat loss`;
+
+    const proteinRatio = isFemale ? 1.6 : 1.8;
+    targetProtein = Math.round(curWeight * proteinRatio);
+    proteinRationale = `${proteinRatio}g/kg preserves lean muscle in deficit`;
+
+    targetCarbs = Math.round((targetCal * 0.38) / 4);
+    carbsRationale = `38% of cals for fat oxidation & energy`;
+
+    const fatPct = isFemale ? 0.28 : 0.25;
+    targetFat = Math.round((targetCal * fatPct) / 9);
+    fatRationale = `${Math.round(fatPct * 100)}% of cals for ${sexLabel} hormonal health`;
+
+    targetSteps = isFemale ? 10000 : 10500;
+    stepsRationale = `Elevated NEAT expenditure for fat loss`;
+
+    targetSleep = isFemale ? 8.5 : 8.0;
+    sleepRationale = `Regulates ghrelin appetite & lowers cortisol`;
+
+    targetWater = Number((curWeight * (isFemale ? 0.034 : 0.036) + 0.2).toFixed(1));
+    waterRationale = `Supports metabolic hydration & appetite control`;
+
+    overallRationale = `Based on your ${sexLabel} BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), a safe 500 kcal deficit targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong> for muscle retention, <strong>${targetSteps.toLocaleString()} steps</strong>, and <strong>${targetSleep}h sleep</strong>.`;
+
   } else if (goal === 'weight_gain') {
-    targetCal     = tdee + 300;
-    targetProtein = Math.round(weight * 1.9);
-    targetCarbs   = Math.round((targetCal * 0.50) / 4);
-    targetFat     = Math.round((targetCal * 0.25) / 9);
-    targetSteps   = 8000;
-    targetSleep   = 8.5;
-    targetWater   = Number((weight * 0.038).toFixed(1));
-    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), a lean 300 kcal surplus targets <strong>${targetCal} kcal/day</strong> with <strong>${targetProtein}g protein</strong> for hypertrophy and <strong>${targetSleep}h sleep</strong> for optimal recovery.`;
+    const surplus = isFemale ? 250 : 350;
+    targetCal = tdee + surplus;
+    calRationale = `TDEE + ${surplus} kcal controlled lean surplus`;
+
+    const gainTargetBmi = isFemale ? 23.5 : 24.5;
+    const gainWeight = Math.round(gainTargetBmi * heightM * heightM * 10) / 10;
+    targetWeightRec = Math.max(curWeight, gainWeight > 30 ? gainWeight : Math.round(curWeight * 1.05 * 10) / 10);
+    weightRationale = `Lean mass target (+${isFemale ? '4%' : '5%'} progression)`;
+
+    const proteinRatio = isFemale ? 1.8 : 2.0;
+    targetProtein = Math.round(curWeight * proteinRatio);
+    proteinRationale = `${proteinRatio}g/kg maximizes muscle protein synthesis`;
+
+    targetCarbs = Math.round((targetCal * 0.52) / 4);
+    carbsRationale = `52% of cals to replenish muscle glycogen`;
+
+    const fatPct = isFemale ? 0.26 : 0.24;
+    targetFat = Math.round((targetCal * fatPct) / 9);
+    fatRationale = `${Math.round(fatPct * 100)}% of cals for hormone synthesis`;
+
+    targetSteps = isFemale ? 7000 : 7500;
+    stepsRationale = `Maintains conditioning without burning muscle fuel`;
+
+    targetSleep = isFemale ? 8.5 : 8.5;
+    sleepRationale = `Maximizes Growth Hormone & deep tissue recovery`;
+
+    targetWater = Number((curWeight * (isFemale ? 0.036 : 0.038) + 0.3).toFixed(1));
+    waterRationale = `Intramuscular hydration & recovery`;
+
+    overallRationale = `Based on your ${sexLabel} BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), a lean ${surplus} kcal surplus targets <strong>${targetCal} kcal/day</strong> with <strong>${targetProtein}g protein</strong> for hypertrophy and <strong>${targetSleep}h sleep</strong> for optimal growth.`;
+
   } else {
-    rationale = `Based on your BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), maintaining weight targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong>, and <strong>${targetSteps.toLocaleString()} steps/day</strong> for sustained health.`;
+    // General Wellness / Maintenance
+    overallRationale = `Based on your ${sexLabel} BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), maintaining weight targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong>, and <strong>${targetSteps.toLocaleString()} steps/day</strong> for sustained vitality.`;
   }
 
   smartRecs = {
     daily_calorie_target: targetCal,
+    target_weight:        targetWeightRec,
     target_protein:       targetProtein,
     target_carbs:         targetCarbs,
     target_fat:           targetFat,
@@ -93,8 +176,18 @@ function computeSmartRecommendations() {
     target_water:         targetWater,
   };
 
+  // Render individual per-field recommendation chips
+  renderFieldChip('rec-chip-calories', 'daily_calorie_target', targetCal, 'Recommended', calRationale);
+  renderFieldChip('rec-chip-weight',   'target_weight',        targetWeightRec, 'Target', weightRationale);
+  renderFieldChip('rec-chip-protein',  'target_protein',       targetProtein, 'Recommended', proteinRationale);
+  renderFieldChip('rec-chip-carbs',    'target_carbs',         targetCarbs, 'Recommended', carbsRationale);
+  renderFieldChip('rec-chip-fat',      'target_fat',           targetFat, 'Recommended', fatRationale);
+  renderFieldChip('rec-chip-steps',    'target_steps',         targetSteps, 'Recommended', stepsRationale);
+  renderFieldChip('rec-chip-sleep',    'target_sleep',         targetSleep, 'Recommended', sleepRationale);
+  renderFieldChip('rec-chip-water',    'target_water',         targetWater, 'Recommended', waterRationale);
+
   const descEl = document.getElementById('smart-calc-desc');
-  if (descEl) descEl.innerHTML = rationale;
+  if (descEl) descEl.innerHTML = overallRationale;
 }
 
 function renderMonitoring() {
