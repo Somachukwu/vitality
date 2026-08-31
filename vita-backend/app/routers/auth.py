@@ -14,17 +14,30 @@ def register(body: UserRegister, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    notif_prefs = None
+    if body.activity_level:
+        notif_prefs = {"targets": {"activity_level": body.activity_level}}
+
     user = User(
         name=body.name,
         email=body.email,
         password_hash=hash_password(body.password),
         age=body.age,
         sex=body.sex,
+        height=body.height,
         goal_type=body.goal_type,
+        notification_preferences=notif_prefs,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Immediately generate initial target-setting recommendation for the new user
+    try:
+        from recommendation_engine.recommendation_service import generate_and_persist_recommendations
+        generate_and_persist_recommendations(user.id, db)
+    except Exception:
+        pass
 
     return TokenResponse(
         access_token=create_access_token(user.id),

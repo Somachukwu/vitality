@@ -134,13 +134,16 @@ function renderRecFallback() {
 
   if (badgeEl) {
     badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Today\'s tip';
+    badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Getting Started';
     badgeEl.style.color = '';
   }
 
   textEl.innerHTML = '<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">Log your meals today</strong><span>You haven\'t logged any meals yet today. Log your meals to track your daily nutrition and generate personalized insights.</span>';
+  textEl.innerHTML = '<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">Set Your Daily Health Targets</strong><span>Personalize your daily calorie, macro, step, and sleep targets to start tracking your progress and receive tailored AI health insights.</span>';
 
   if (triggerEl) {
     triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="food-log.html" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">Log Meal →</a><a href="recommendations.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">All insights</a></div>';
+    triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="goals.html?edit=1" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">Configure Targets →</a><a href="goals.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">View Goals</a></div>';
   }
 }
 

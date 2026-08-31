@@ -2,68 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Set up your profile</title>
-  <link rel="icon" type="image/png" href="vitality-favicon.png" sizes="128x128" />
-  <link rel="stylesheet" href="styles/main.css" />
-  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+  <meta http-equiv="refresh" content="0; url=dashboard.html" />
+  <title>Redirecting…</title>
+  <script>window.location.replace('dashboard.html');</script>
 </head>
 <body>
-  <main class="auth-wrap">
-    <div class="card auth-card">
-      <h2>One last step</h2>
-      <p class="muted text-sm mb-3">Help us tailor your daily targets.</p>
-      <form id="onb-form" class="stack" novalidate>
-        <div>
-          <label for="height">Height (cm)</label>
-          <input id="height" type="number" min="100" max="240" placeholder="Enter your height" required />
-          <div class="text-xs muted mt-1">Weight will be measured by your smart scale automatically.</div>
-        </div>
-        <div>
-          <label for="cal">Daily calorie target</label>
-          <input id="cal" type="number" min="1200" max="4000" placeholder="Enter daily calorie target" required />
-        </div>
-        <div>
-          <label for="diet">Dietary restrictions (comma-separated, optional)</label>
-          <input id="diet" placeholder="e.g. lactose, gluten" />
-        </div>
-        <div>
-          <label for="health">Existing health conditions (comma-separated, optional)</label>
-          <input id="health" placeholder="e.g. diabetes, hypertension" />
-        </div>
-        <button class="btn btn-primary btn-block" type="submit">Continue to dashboard</button>
-      </form>
-    </div>
-  </main>
-  <script type="module">
-    import { getUser, saveUser, requireAuth } from './js/auth.js';
-    import { api } from './js/api.js';
-    import { toast } from './js/utils.js';
-    requireAuth();
-
-    const form = document.getElementById('onb-form');
-    const btn = form.querySelector('button[type="submit"]');
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      btn.disabled = true;
-      btn.textContent = 'Saving…';
-      try {
-        const payload = {
-          height:               Number(document.getElementById('height').value),
-          daily_calorie_target: Number(document.getElementById('cal').value),
-          dietary_restrictions: document.getElementById('diet').value.split(',').map(s => s.trim()).filter(Boolean),
-          health_conditions:    document.getElementById('health').value.split(',').map(s => s.trim()).filter(Boolean),
-        };
-        const profile = await api.put('/users/profile', payload);
-        saveUser({ ...getUser(), ...profile });
-        window.location.href = 'dashboard.html';
-      } catch (err) {
-        toast('Could not save: ' + err.message, 'error');
-        btn.disabled = false;
-        btn.textContent = 'Continue to dashboard';
-      }
-    });
-  </script>
+  <p>Redirecting to dashboard…</p>
 </body>
 </html>

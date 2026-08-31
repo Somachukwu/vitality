@@ -19,6 +19,24 @@ def _profile(facts: dict[str, Any]) -> UserProfile:
     return facts["profile"]
 
 
+def _rule_set_targets_action(facts: dict[str, Any]) -> Recommendation:
+    return Recommendation(
+        category=Category.GOAL_PROGRESS.value,
+        priority=Priority.MEDIUM,
+        tier=Tier.PRIMARY_ACTION,
+        rule_id="lifestyle.set_daily_targets",
+        title="Set Your Daily Health Targets",
+        message=(
+            "Welcome to Vitality! Customize your daily calorie, macronutrient, step, and sleep targets "
+            "to unlock tailored AI insights and real-time progress tracking."
+        ),
+        evidence={"target_status": "unconfigured"},
+        action_data={"action_label": "Configure Targets", "route": "goals.html?edit=1"},
+        cooldown_days=1,
+        confidence=0.95,
+    )
+
+
 def _rule_daily_wellness_focus_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
     p = _profile(facts)
@@ -38,7 +56,7 @@ def _rule_daily_wellness_focus_action(facts: dict[str, Any]) -> Recommendation:
         title="Daily Wellness & Consistency",
         message=tip,
         evidence={"goal": goal_str, "target_calories": s.calorie_target},
-        action_data={"action_label": "View Goals", "route": "profile.html"},
+        action_data={"action_label": "View Goals", "route": "goals.html"},
         cooldown_days=1,
         confidence=0.8,
     )
@@ -64,13 +82,21 @@ def _rule_macro_balance_insight_action(facts: dict[str, Any]) -> Recommendation:
     )
 
 
-
 FALLBACK_RULES = [
+    Rule(
+        rule_id="lifestyle.set_daily_targets",
+        category=Category.GOAL_PROGRESS.value,
+        tier=Tier.PRIMARY_ACTION,
+        condition=lambda f: _profile(f).target_calories is None,
+        action=_rule_set_targets_action,
+        weight=40,
+        cooldown_days=1,
+    ),
     Rule(
         rule_id="lifestyle.daily_wellness_focus",
         category=Category.GOAL_PROGRESS.value,
         tier=Tier.PRIMARY_ACTION,
-        condition=lambda f: True,
+        condition=lambda f: _profile(f).target_calories is not None,
         action=_rule_daily_wellness_focus_action,
         weight=30,
         cooldown_days=1,

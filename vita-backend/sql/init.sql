@@ -165,7 +165,7 @@ ORDER BY table_name;
 
 
 use vita_db;
-DELETE FROM meals WHERE image_url IS NULL;
+DELETE users WHERE email = "onyearanapu@gmail.com";
 
 SELECT * FROM users
 

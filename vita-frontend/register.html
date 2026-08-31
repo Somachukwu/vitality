@@ -18,42 +18,57 @@
     <div class="card auth-card">
       <a class="brand mb-2" href="index.html"><img src="vitality-logo-icon.png" class="brand-logo" alt="Vitality logo"/><span>Vitality</span></a>
       <h2>Create your account</h2>
-      <p class="muted text-sm mb-3">Takes less than a minute.</p>
+      <p class="muted text-sm mb-3">Join Vitality to personalize your health and targets.</p>
       <form id="signup-form" class="stack" novalidate>
         <div>
           <label for="name">Full name</label>
-          <input id="name" required maxlength="80" placeholder="Enter your full name" />
+          <input id="name" required maxlength="80" placeholder="e.g. Alex Johnson" />
         </div>
         <div>
-          <label for="email">Email</label>
+          <label for="email">Email address</label>
           <input id="email" type="email" required placeholder="you@example.com" />
         </div>
         <div>
           <label for="password">Password</label>
-          <input id="password" type="password" required minlength="6" />
+          <input id="password" type="password" required minlength="6" placeholder="Minimum 6 characters" />
         </div>
         <div class="grid grid-2">
           <div>
             <label for="age">Age</label>
-            <input id="age" type="number" min="13" max="100" placeholder="Enter your age" />
+            <input id="age" type="number" min="13" max="100" placeholder="e.g. 25" required />
           </div>
           <div>
-            <label for="sex">Sex</label>
-            <select id="sex">
-              <option value="">Prefer not to say</option>
-              <option>male</option><option>female</option>
+            <label for="sex">Biological sex</label>
+            <select id="sex" required>
+              <option value="male" selected>Male</option>
+              <option value="female">Female</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid grid-2">
+          <div>
+            <label for="height">Height (cm)</label>
+            <input id="height" type="number" min="100" max="240" placeholder="e.g. 175" required />
+          </div>
+          <div>
+            <label for="activity">Daily activity level</label>
+            <select id="activity" required>
+              <option value="sedentary">Sedentary (Desk job)</option>
+              <option value="light">Lightly Active (1-3 d/wk)</option>
+              <option value="moderate" selected>Moderately Active (3-5 d/wk)</option>
+              <option value="very_active">Very Active (6-7 d/wk)</option>
             </select>
           </div>
         </div>
         <div>
-          <label for="goal">Health goal</label>
-          <select id="goal">
-            <option value="maintenance">General wellness / Maintain</option>
-            <option value="weight_loss">Lose weight</option>
-            <option value="weight_gain">Gain weight</option>
+          <label for="goal">Primary fitness &amp; wellness goal</label>
+          <select id="goal" required>
+            <option value="maintenance" selected>General wellness / Maintain weight</option>
+            <option value="weight_loss">Lose weight / Fat loss</option>
+            <option value="weight_gain">Build muscle / Gain weight</option>
           </select>
         </div>
-        <button class="btn btn-primary btn-block" type="submit">Create account</button>
+        <button class="btn btn-primary btn-block" type="submit" id="submit-btn">Create account</button>
       </form>
       <p class="text-sm mt-3 center muted">Already have an account? <a href="login.html">Log in</a></p>
     </div>
@@ -61,20 +76,60 @@
   <script type="module">
     import { registerApi } from './js/auth.js';
     import { toast } from './js/utils.js';
-    const btn = document.querySelector('button[type="submit"]');
-    document.getElementById('signup-form').addEventListener('submit', async (e) => {
+
+    const form = document.getElementById('signup-form');
+    const btn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const f = (id) => document.getElementById(id).value.trim();
-      const email = f('email');
-      const pw = document.getElementById('password').value;
-      if (!f('name') || !email || pw.length < 6) { toast('Please fill in name, email, and password (6+ chars).', 'error'); return; }
-      btn.disabled = true; btn.textContent = 'Creating account…';
+      const val = (id) => (document.getElementById(id)?.value || '').trim();
+
+      const name = val('name');
+      const email = val('email');
+      const password = document.getElementById('password').value;
+      const age = val('age');
+      const sex = val('sex');
+      const height = val('height');
+      const activity = val('activity');
+      const goal = val('goal');
+
+      if (!name) {
+        toast('Please enter your full name.', 'error');
+        document.getElementById('name').focus();
+        return;
+      }
+      if (!email || !email.includes('@')) {
+        toast('Please enter a valid email address.', 'error');
+        document.getElementById('email').focus();
+        return;
+      }
+      if (!password || password.length < 6) {
+        toast('Password must be at least 6 characters.', 'error');
+        document.getElementById('password').focus();
+        return;
+      }
+      if (!age || Number(age) < 13 || Number(age) > 100) {
+        toast('Please enter a valid age between 13 and 100.', 'error');
+        document.getElementById('age').focus();
+        return;
+      }
+      if (!height || Number(height) < 100 || Number(height) > 240) {
+        toast('Please enter your height in cm (100–240 cm).', 'error');
+        document.getElementById('height').focus();
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Creating account…';
+
       try {
-        await registerApi(f('name'), email, pw, f('age'), f('sex'), f('goal'));
-        window.location.href = 'onboarding.html';
+        await registerApi(name, email, password, age, sex, height, activity, goal);
+        toast('Account created successfully! Welcome to Vitality.');
+        window.location.href = 'dashboard.html';
       } catch (err) {
-        toast(err.message || 'Registration failed. Try a different email.', 'error');
-        btn.disabled = false; btn.textContent = 'Create account';
+        toast(err.message || 'Registration failed. Please try again.', 'error');
+        btn.disabled = false;
+        btn.textContent = 'Create account';
       }
     });
   </script>

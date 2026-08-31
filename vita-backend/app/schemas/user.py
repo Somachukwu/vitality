@@ -10,6 +10,9 @@ class UserRegister(BaseModel):
     password: str
     age: int | None = None
     sex: Literal["male", "female", "other"] | None = None
+    sex: Literal["male", "female"] | None = None
+    height: float | None = None
+    activity_level: Literal["sedentary", "light", "moderate", "very_active"] | None = None
     goal_type: Literal["weight_loss", "weight_gain", "maintenance"] | None = None
 
 
