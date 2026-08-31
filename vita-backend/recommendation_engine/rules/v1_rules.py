@@ -250,11 +250,14 @@ V1_RULES = [
         category=Category.NUTRITION.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            _snapshot(f).meals_logged == 0
-            or (
-                _snapshot(f).meals_logged in (1, 2)
-                and _snapshot(f).calorie_target is not None
-                and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
+            _profile(f).target_calories is not None
+            and (
+                _snapshot(f).meals_logged == 0
+                or (
+                    _snapshot(f).meals_logged in (1, 2)
+                    and _snapshot(f).calorie_target is not None
+                    and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
+                )
             )
         ),
         action=_rule_incomplete_meal_logging_action,

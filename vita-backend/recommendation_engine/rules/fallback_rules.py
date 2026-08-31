@@ -89,7 +89,7 @@ FALLBACK_RULES = [
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: _profile(f).target_calories is None,
         action=_rule_set_targets_action,
-        weight=40,
+        weight=90,
         cooldown_days=1,
     ),
     Rule(
