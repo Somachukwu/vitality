@@ -10,6 +10,40 @@ initThemeToggle();
 
 const charts = {};
 
+// ── Chart Fullscreen / Landscape Expand ───────────────────────────────────────
+window.expandChart = function (cardId, canvasId) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+
+  if (!document.fullscreenElement) {
+    card.requestFullscreen().catch(() => {
+      // If fullscreen API unavailable (rare), fallback: just make card full-viewport
+      card.classList.toggle('chart-pseudo-fullscreen');
+    });
+  } else {
+    document.exitFullscreen();
+  }
+};
+
+document.addEventListener('fullscreenchange', () => {
+  // After fullscreen transition, resize all Chart.js instances so they fill the space
+  setTimeout(() => {
+    Object.values(charts).forEach(c => {
+      if (c && typeof c.resize === 'function') c.resize();
+    });
+    // Update expand button icon
+    const isFullscreen = !!document.fullscreenElement;
+    document.querySelectorAll('.btn-chart-fullscreen').forEach(btn => {
+      const icon = btn.querySelector('i[data-lucide]');
+      if (icon) {
+        icon.setAttribute('data-lucide', isFullscreen ? 'minimize-2' : 'maximize-2');
+        if (window.lucide) window.lucide.createIcons();
+      }
+    });
+  }, 150);
+});
+
+
 function makeChart(id, label, data, color) {
   const ctx = document.getElementById(id);
   if (!ctx) return;

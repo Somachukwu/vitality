@@ -350,6 +350,60 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
 .chart-canvas { height: 180px; }
 @media (min-width: 768px) { .chart-canvas { height: 240px; } }
 
+/* Chart card header with title + fullscreen button */
+.chart-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.chart-card-header .card-title { margin-bottom: 0; }
+.btn-chart-fullscreen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+  color: var(--muted);
+  transition: color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.btn-chart-fullscreen:hover { color: var(--teal); border-color: var(--teal); }
+.btn-chart-fullscreen svg { width: 15px; height: 15px; }
+
+/* When a chart card enters native fullscreen mode */
+.chart-card:fullscreen,
+.chart-card:-webkit-full-screen {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  padding: 1.25rem;
+  border-radius: 0;
+  overflow: auto;
+}
+.chart-card:fullscreen .chart-canvas,
+.chart-card:-webkit-full-screen .chart-canvas {
+  height: calc(100vh - 80px);
+  flex: 1;
+}
+
+/* Pseudo-fullscreen fallback (if Fullscreen API unavailable) */
+.chart-pseudo-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9999 !important;
+  border-radius: 0 !important;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg) !important;
+  padding: 1.25rem !important;
+}
+.chart-pseudo-fullscreen .chart-canvas { height: calc(100vh - 80px) !important; flex: 1; }
+
+
 /* Food log date filter */
 .filter-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
 .filter-row input[type="date"], .filter-row input[type="text"] {

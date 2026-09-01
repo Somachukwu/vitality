@@ -207,7 +207,7 @@ function renderMonitoring() {
   }
 
   // 1. Calories
-  const consumedCal  = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
+  const consumedCal  = todayMeals.reduce((sum, m) => sum + (m.total_calories || 0), 0);
   const calPct       = Math.min(100, Math.round((consumedCal / calTarget) * 100));
   const calRemaining = Math.max(0, calTarget - consumedCal);
   document.getElementById('cal-consumed').textContent       = Math.round(consumedCal).toLocaleString();
@@ -227,10 +227,10 @@ function renderMonitoring() {
     ? 'Goal reached! 🎉'
     : `${(stepTarget - steps).toLocaleString()} steps to go`;
 
-  // 3. Macros
-  const loggedProtein = Math.round(todayMeals.reduce((sum, m) => sum + (m.protein_g || 0), 0));
-  const loggedCarbs   = Math.round(todayMeals.reduce((sum, m) => sum + (m.carbs_g   || 0), 0));
-  const loggedFat     = Math.round(todayMeals.reduce((sum, m) => sum + (m.fat_g     || 0), 0));
+  // 3. Macros (raw API: total_protein, total_carbs, total_fat)
+  const loggedProtein = Math.round(todayMeals.reduce((sum, m) => sum + (m.total_protein || 0), 0));
+  const loggedCarbs   = Math.round(todayMeals.reduce((sum, m) => sum + (m.total_carbs   || 0), 0));
+  const loggedFat     = Math.round(todayMeals.reduce((sum, m) => sum + (m.total_fat     || 0), 0));
 
   document.getElementById('protein-progress').textContent = `${loggedProtein} / ${proteinTarget}g`;
   document.getElementById('protein-bar').style.width      = `${Math.min(100, Math.round((loggedProtein / proteinTarget) * 100))}%`;
@@ -391,6 +391,9 @@ document.getElementById('goals-page-form').addEventListener('submit', async (e) 
     };
 
     profile = await api.put('/users/profile', payload);
+    // Persist full profile to localStorage so dashboard reads the correct step target on next boot
+    const { getUser, saveUser } = await import('./auth.js');
+    saveUser({ ...getUser(), ...profile });
     setGoalsEditMode(false);
     renderMonitoring();
     computeSmartRecommendations();

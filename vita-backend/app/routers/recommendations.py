@@ -71,27 +71,22 @@ def create_or_log_recommendation(
 def get_recommendations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    days: int = 30,
 ):
     """
     Returns all recommendations for the authenticated user, ordered newest first.
-    Automatically generates fresh recommendations if none exist for today.
+    Accepts optional ?days=N query param to limit history window (default: 30 days).
     """
-    today_start = datetime.now(timezone.utc).date()
-    today_start_dt = datetime.combine(today_start, datetime.min.time())
-
-    today_count = (
-        db.query(Recommendation)
-        .filter(Recommendation.user_id == current_user.id, Recommendation.created_at >= today_start_dt)
-        .count()
-    )
-    if today_count == 0:
-        generate_and_persist_recommendations(current_user.id, db)
+    cutoff_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     return (
         db.query(Recommendation)
-        .filter(Recommendation.user_id == current_user.id)
+        .filter(
+            Recommendation.user_id == current_user.id,
+            Recommendation.created_at >= cutoff_dt,
+        )
         .order_by(Recommendation.created_at.desc())
-        .limit(50)
+        .limit(200)
         .all()
     )
 

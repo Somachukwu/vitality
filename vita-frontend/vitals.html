@@ -33,16 +33,16 @@
       </header>
       <main class="container stack">
         <div class="text-xs muted" id="last-sync">—</div>
-        <div class="card"><div class="card-title">Heart rate (bpm)</div><div class="chart-canvas"><canvas id="c-hr"></canvas></div></div>
-        <div class="card"><div class="card-title">SpO₂ (%)</div><div class="chart-canvas"><canvas id="c-spo2"></canvas></div></div>
-        <div class="card"><div class="card-title">Sleep history &amp; stages (hours)</div><div class="chart-canvas"><canvas id="c-sleep"></canvas></div></div>
-        <div class="card"><div class="card-title">Active zone minutes (min)</div><div class="chart-canvas"><canvas id="c-active"></canvas></div></div>
-        <div class="card"><div class="card-title">Steps</div><div class="chart-canvas"><canvas id="c-steps"></canvas></div></div>
-        <div class="card"><div class="card-title">Distance (km)</div><div class="chart-canvas"><canvas id="c-dist"></canvas></div></div>
-        <div class="card"><div class="card-title">Calories burned (kcal)</div><div class="chart-canvas"><canvas id="c-cal"></canvas></div></div>
-        <div class="card"><div class="card-title">Floors climbed</div><div class="chart-canvas"><canvas id="c-floors"></canvas></div></div>
-        <div class="card"><div class="card-title">Body temperature (°C)</div><div class="chart-canvas"><canvas id="c-temp"></canvas></div></div>
-        <div class="card"><div class="card-title">Weight (kg)</div><div class="chart-canvas"><canvas id="c-wt"></canvas></div></div>
+        <div class="card chart-card" id="card-hr"><div class="chart-card-header"><span class="card-title">Heart rate (bpm)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-hr','c-hr')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-hr"></canvas></div></div>
+        <div class="card chart-card" id="card-spo2"><div class="chart-card-header"><span class="card-title">SpO₂ (%)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-spo2','c-spo2')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-spo2"></canvas></div></div>
+        <div class="card chart-card" id="card-sleep"><div class="chart-card-header"><span class="card-title">Sleep history &amp; stages (hours)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-sleep','c-sleep')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-sleep"></canvas></div></div>
+        <div class="card chart-card" id="card-active"><div class="chart-card-header"><span class="card-title">Active zone minutes (min)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-active','c-active')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-active"></canvas></div></div>
+        <div class="card chart-card" id="card-steps"><div class="chart-card-header"><span class="card-title">Steps</span><button class="btn-chart-fullscreen" onclick="expandChart('card-steps','c-steps')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-steps"></canvas></div></div>
+        <div class="card chart-card" id="card-dist"><div class="chart-card-header"><span class="card-title">Distance (km)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-dist','c-dist')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-dist"></canvas></div></div>
+        <div class="card chart-card" id="card-cal"><div class="chart-card-header"><span class="card-title">Calories burned (kcal)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-cal','c-cal')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-cal"></canvas></div></div>
+        <div class="card chart-card" id="card-floors"><div class="chart-card-header"><span class="card-title">Floors climbed</span><button class="btn-chart-fullscreen" onclick="expandChart('card-floors','c-floors')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-floors"></canvas></div></div>
+        <div class="card chart-card" id="card-temp"><div class="chart-card-header"><span class="card-title">Body temperature (°C)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-temp','c-temp')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-temp"></canvas></div></div>
+        <div class="card chart-card" id="card-wt"><div class="chart-card-header"><span class="card-title">Weight (kg)</span><button class="btn-chart-fullscreen" onclick="expandChart('card-wt','c-wt')" title="Full screen"><i data-lucide="maximize-2"></i></button></div><div class="chart-canvas"><canvas id="c-wt"></canvas></div></div>
         <div class="card">
           <div class="card-title">Anomalies</div>
           <div class="list" id="anomalies"></div>
