@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone, date
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func, cast, Date
