@@ -11,36 +11,84 @@ initThemeToggle();
 const charts = {};
 
 // ── Chart Fullscreen / Landscape Expand ───────────────────────────────────────
-window.expandChart = function (cardId, canvasId) {
+function onFullscreenStateChange(isFullscreen) {
+  // Reset any stray inline canvas sizes that Chart.js or browser left
+  document.querySelectorAll('.chart-canvas canvas').forEach(canvas => {
+    canvas.style.width = '100%';
+    canvas.style.maxWidth = '100%';
+  });
+
+  // Update expand button icons
+  document.querySelectorAll('.btn-chart-fullscreen').forEach(btn => {
+    const icon = btn.querySelector('i[data-lucide]');
+    if (icon) {
+      icon.setAttribute('data-lucide', isFullscreen ? 'minimize-2' : 'maximize-2');
+      if (window.lucide) window.lucide.createIcons();
+    }
+  });
+
+  // Trigger resize on charts
+  setTimeout(() => {
+    Object.values(charts).forEach(c => {
+      if (c && typeof c.resize === 'function') {
+        c.resize();
+      }
+    });
+  }, 100);
+}
+
+window.expandChart = async function (cardId, canvasId) {
   const card = document.getElementById(cardId);
   if (!card) return;
 
-  if (!document.fullscreenElement) {
-    card.requestFullscreen().catch(() => {
-      // If fullscreen API unavailable (rare), fallback: just make card full-viewport
-      card.classList.toggle('chart-pseudo-fullscreen');
-    });
+  const isAlreadyFull = document.fullscreenElement === card || card.classList.contains('chart-pseudo-fullscreen');
+
+  if (!isAlreadyFull) {
+    try {
+      if (card.requestFullscreen) {
+        await card.requestFullscreen();
+      } else if (card.webkitRequestFullscreen) {
+        await card.webkitRequestFullscreen();
+      } else {
+        card.classList.add('chart-pseudo-fullscreen');
+        onFullscreenStateChange(true);
+      }
+    } catch {
+      card.classList.add('chart-pseudo-fullscreen');
+      onFullscreenStateChange(true);
+    }
+
+    // Attempt locking screen to landscape on mobile devices
+    if (screen.orientation && screen.orientation.lock) {
+      try {
+        await screen.orientation.lock('landscape');
+      } catch { /* unsupported or requires permission */ }
+    }
   } else {
-    document.exitFullscreen();
+    if (document.fullscreenElement) {
+      try {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
+      } catch { /* ignore */ }
+    }
+    card.classList.remove('chart-pseudo-fullscreen');
+    onFullscreenStateChange(false);
+
+    if (screen.orientation && screen.orientation.unlock) {
+      try { screen.orientation.unlock(); } catch { /* ignore */ }
+    }
   }
 };
 
 document.addEventListener('fullscreenchange', () => {
-  // After fullscreen transition, resize all Chart.js instances so they fill the space
-  setTimeout(() => {
-    Object.values(charts).forEach(c => {
-      if (c && typeof c.resize === 'function') c.resize();
-    });
-    // Update expand button icon
-    const isFullscreen = !!document.fullscreenElement;
-    document.querySelectorAll('.btn-chart-fullscreen').forEach(btn => {
-      const icon = btn.querySelector('i[data-lucide]');
-      if (icon) {
-        icon.setAttribute('data-lucide', isFullscreen ? 'minimize-2' : 'maximize-2');
-        if (window.lucide) window.lucide.createIcons();
-      }
-    });
-  }, 150);
+  const isFullscreen = !!document.fullscreenElement;
+  onFullscreenStateChange(isFullscreen);
+  if (!isFullscreen) {
+    document.querySelectorAll('.chart-pseudo-fullscreen').forEach(el => el.classList.remove('chart-pseudo-fullscreen'));
+    if (screen.orientation && screen.orientation.unlock) {
+      try { screen.orientation.unlock(); } catch { /* ignore */ }
+    }
+  }
 });
 
 

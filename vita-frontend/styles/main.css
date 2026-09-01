@@ -180,7 +180,8 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
 /* Sidebar (desktop) */
 .side-nav { display: none; }
 @media (min-width: 1024px) {
-  .has-side { display: grid; grid-template-columns: 240px 1fr; gap: 0; }
+  .has-side { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 0; min-height: 100vh; }
+  .has-side > div { min-width: 0; max-width: 100%; }
   .side-nav {
     display: flex; flex-direction: column; gap: 0.25rem;
     padding: 1.5rem 1rem; border-right: 1px solid var(--border);
@@ -346,8 +347,23 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
 }
 
 
-/* Responsive chart canvas height */
-.chart-canvas { height: 180px; }
+/* Responsive chart canvas container */
+.chart-card {
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+.chart-canvas {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 180px;
+}
+.chart-canvas canvas {
+  width: 100% !important;
+  max-width: 100% !important;
+}
 @media (min-width: 768px) { .chart-canvas { height: 240px; } }
 
 /* Chart card header with title + fullscreen button */
@@ -382,11 +398,16 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   background: var(--bg);
   padding: 1.25rem;
   border-radius: 0;
-  overflow: auto;
+  width: 100vw !important;
+  height: 100vh !important;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .chart-card:fullscreen .chart-canvas,
 .chart-card:-webkit-full-screen .chart-canvas {
-  height: calc(100vh - 80px);
+  height: calc(100vh - 70px) !important;
+  width: 100% !important;
+  max-width: 100% !important;
   flex: 1;
 }
 
@@ -400,8 +421,35 @@ label { display: block; font-size: 0.875rem; color: var(--muted); margin-bottom:
   flex-direction: column;
   background: var(--bg) !important;
   padding: 1.25rem !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
 }
-.chart-pseudo-fullscreen .chart-canvas { height: calc(100vh - 80px) !important; flex: 1; }
+.chart-pseudo-fullscreen .chart-canvas { height: calc(100vh - 70px) !important; flex: 1; width: 100% !important; }
+
+/* Mobile Fullscreen Landscape Mode (rotates seamlessly if locked in portrait) */
+@media (max-width: 768px) and (orientation: portrait) {
+  .chart-card:fullscreen,
+  .chart-card:-webkit-full-screen,
+  .chart-pseudo-fullscreen {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 100vh !important;
+    height: 100vw !important;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin: center center !important;
+    box-sizing: border-box !important;
+    z-index: 99999 !important;
+  }
+  .chart-card:fullscreen .chart-canvas,
+  .chart-card:-webkit-full-screen .chart-canvas,
+  .chart-pseudo-fullscreen .chart-canvas {
+    height: calc(100vw - 70px) !important;
+    width: 100% !important;
+  }
+}
 
 
 /* Food log date filter */

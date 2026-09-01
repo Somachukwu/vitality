@@ -13,6 +13,12 @@ renderDynamicGreeting(user.name?.split(' ')[0] || 'there');
 
 // Immediately render initial contextual card so morning tips are visible without waiting for network calls
 try {
+  const bootStepsGoal = user.notification_preferences?.targets?.target_steps || user.target_steps;
+  const bootGoalEl = document.getElementById('steps-goal-label');
+  if (bootGoalEl && bootStepsGoal) {
+    bootGoalEl.textContent = `Goal: ${Number(bootStepsGoal).toLocaleString()}`;
+  }
+
   const initialCard = resolveContextualCard({
     userProfile: user,
     topRec: null,
