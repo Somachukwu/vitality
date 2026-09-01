@@ -560,6 +560,53 @@ function renderRecentMeals(meals) {
   `).join('');
 }
 
+async function persistContextualInsight(card) {
+  if (!card || !card.rule_id) return;
+  if (card.id) return; // already in DB
+
+  let type = 'nutrition';
+  if (
+    card.rule_id.startsWith('activity.') ||
+    card.rule_id.startsWith('time.morning_low_steps') ||
+    card.rule_id.startsWith('time.evening_steps') ||
+    card.rule_id === 'milestone.steps_met'
+  ) {
+    type = 'activity';
+  } else if (
+    card.rule_id.startsWith('safety.') ||
+    card.rule_id.startsWith('sleep.') ||
+    card.rule_id.startsWith('vitals.')
+  ) {
+    type = 'health_alert';
+  } else if (
+    card.rule_id.startsWith('goal.') ||
+    card.rule_id.startsWith('lifestyle.') ||
+    card.rule_id.startsWith('milestone.') ||
+    card.rule_id === 'dynamic.morning_poetic'
+  ) {
+    type = 'goal_progress';
+  }
+
+  const payload = {
+    type,
+    severity: (card.tier === 'safety' || card.priority === 'critical' || card.severity === 'critical') ? 'critical' : 'info',
+    tier: card.tier || 'primary_action',
+    rule_id: card.rule_id,
+    title: card.title || "Today's Insight",
+    message: card.message,
+    action_data: card.action_data || {},
+  };
+
+  try {
+    const saved = await api.post('/recommendations/', payload);
+    if (saved && saved.id) {
+      card.id = saved.id;
+    }
+  } catch {
+    // Non-blocking
+  }
+}
+
 async function loadAll() {
   let calorieGoal = user.daily_calorie_target || 2200;
   let userName = user.name?.split(' ')[0] || 'there';
@@ -572,6 +619,10 @@ async function loadAll() {
     userName = profile.name?.split(' ')[0] || 'there';
     renderDynamicGreeting(userName);
     calorieGoal = profile.daily_calorie_target || 2200;
+
+    const stepsGoal = profile.notification_preferences?.targets?.target_steps || user.notification_preferences?.targets?.target_steps || 10000;
+    const goalEl = document.getElementById('steps-goal-label');
+    if (goalEl) goalEl.textContent = `Goal: ${stepsGoal.toLocaleString()}`;
   } catch { /* fall back to cached/default goal */ }
 
   // 1. Fetch Vitals (for user's local date)
@@ -619,6 +670,12 @@ async function loadAll() {
 
     if (smartCard) {
       renderRec(smartCard);
+      // Persist to database so it is recorded in Insights history
+      if (smartCard.isAlternating && Array.isArray(smartCard.cards)) {
+        smartCard.cards.forEach(c => persistContextualInsight(c));
+      } else {
+        persistContextualInsight(smartCard);
+      }
     } else {
       renderRecFallback();
     }

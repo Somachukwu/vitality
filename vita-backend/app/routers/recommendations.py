@@ -8,10 +8,63 @@ from app.core.dependencies import get_current_user
 from app.database import get_db
 from app.models.recommendation import Recommendation
 from app.models.user import User
-from app.schemas.recommendation import RecommendationOut, RecommendationsGroupedOut
+from app.schemas.recommendation import RecommendationCreate, RecommendationOut, RecommendationsGroupedOut
 from recommendation_engine.recommendation_service import generate_and_persist_recommendations
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
+
+
+@router.post("/", response_model=RecommendationOut, status_code=status.HTTP_201_CREATED)
+def create_or_log_recommendation(
+    payload: RecommendationCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Persists a dynamic or contextual recommendation to the database.
+    De-duplicates if the exact same rule_id was already logged today for this user.
+    """
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start = datetime.combine(now_naive.date(), datetime.min.time())
+
+    # De-duplicate if same rule_id already logged today for this user
+    if payload.rule_id:
+        existing = (
+            db.query(Recommendation)
+            .filter(
+                Recommendation.user_id == current_user.id,
+                Recommendation.rule_id == payload.rule_id,
+                Recommendation.created_at >= today_start,
+            )
+            .first()
+        )
+        if existing:
+            # Update content if message changed and return existing
+            existing.message = payload.message
+            existing.title = payload.title
+            existing.action_data = payload.action_data
+            existing.evidence = payload.evidence
+            db.commit()
+            db.refresh(existing)
+            return existing
+
+    rec = Recommendation(
+        user_id=current_user.id,
+        type=payload.type,
+        severity=payload.severity,
+        tier=payload.tier,
+        rule_id=payload.rule_id,
+        title=payload.title,
+        message=payload.message,
+        evidence=payload.evidence,
+        action_data=payload.action_data,
+        expires_at=payload.expires_at,
+        created_at=now_naive,
+    )
+    db.add(rec)
+    db.commit()
+    db.refresh(rec)
+    return rec
 
 
 @router.get("/", response_model=list[RecommendationOut])

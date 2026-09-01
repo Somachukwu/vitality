@@ -9,11 +9,34 @@ renderNav('recommendations.html');
 initThemeToggle();
 
 const TYPE_META = {
-  nutrition:     { label: 'Nutritional tip',  icon: 'apple',        badge: 'badge-success' },
-  activity:      { label: 'Activity alert',   icon: 'footprints',   badge: 'badge-info' },
-  health_alert:  { label: 'Health warning',   icon: 'shield-alert', badge: 'badge-warning' },
-  goal_progress: { label: 'Goal progress',    icon: 'target',       badge: 'badge-info' },
+  nutrition:     { label: 'Nutrition',        icon: 'apple',        badge: 'badge-success' },
+  activity:      { label: 'Activity',         icon: 'footprints',   badge: 'badge-info' },
+  health_alert:  { label: 'Health Warning',   icon: 'shield-alert', badge: 'badge-warning' },
+  goal_progress: { label: 'Goal Progress',    icon: 'target',       badge: 'badge-info' },
 };
+
+function getRecBadgeInfo(r) {
+  if (r.rule_id === 'dynamic.morning_poetic') {
+    return { label: 'Morning Vitality', icon: 'sun', badgeClass: 'badge-success' };
+  }
+  if (r.rule_id?.startsWith('milestone.')) {
+    return { label: 'Milestone Achieved', icon: 'sparkles', badgeClass: 'badge-info' };
+  }
+  if (r.rule_id?.startsWith('time.morning_low_steps') || r.rule_id?.startsWith('time.evening_steps')) {
+    return { label: 'Activity Check', icon: 'footprints', badgeClass: 'badge-info' };
+  }
+  if (r.rule_id?.startsWith('time.midday_meal') || r.rule_id?.startsWith('time.afternoon_meal')) {
+    return { label: 'Meal Check-In', icon: 'apple', badgeClass: 'badge-success' };
+  }
+  if (r.rule_id?.startsWith('time.evening_')) {
+    return { label: 'Calorie Guidance', icon: 'target', badgeClass: 'badge-success' };
+  }
+  if (r.rule_id?.startsWith('sleep.')) {
+    return { label: 'Sleep & Recovery', icon: 'moon', badgeClass: 'badge-info' };
+  }
+  const m = TYPE_META[r.type] || TYPE_META.nutrition;
+  return { label: m.label, icon: m.icon, badgeClass: m.badge };
+}
 
 function severityBadge(s) {
   if (s === 'critical') return 'badge-critical';
@@ -44,7 +67,7 @@ function render() {
   }
 
   host.innerHTML = list.map(r => {
-    const m = TYPE_META[r.type] || TYPE_META.nutrition;
+    const badgeInfo = getRecBadgeInfo(r);
     let actionBtn = '';
     const rawRoute = r.action_data?.route || '';
     const cleanRoute = rawRoute.replace(/^\//, '');
@@ -56,9 +79,9 @@ function render() {
 
     return `
       <div class="card${r.is_read ? ' opacity-60' : ''}" style="${r.tier === 'safety' ? 'border-left:4px solid #ef4444' : ''}">
-        <div class="row between mb-1 flex-wrap">
+        <div class="row between mb-1 flex-wrap align-center">
           <div class="row gap-xs align-center">
-            <span class="badge ${m.badge}"><i data-lucide="${m.icon}"></i> ${m.label}</span>
+            <span class="badge ${badgeInfo.badgeClass}"><i data-lucide="${badgeInfo.icon}"></i> ${badgeInfo.label}</span>
             ${tierBadge}
           </div>
           <span class="badge ${severityBadge(r.severity)}">${r.severity}</span>
