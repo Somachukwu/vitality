@@ -91,19 +91,20 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
     const formData = new FormData();
     formData.append('file', selectedFile);
     const r = await api.postForm('/food/analyze', formData);
+    const isAmbiguous = Boolean(r.is_ambiguous || !r.food_name || r.confidence < 0.55);
     lastDetection = {
       imageUrl: r.image_url,
       multiplier,
       confidence: r.confidence,
-      lowConfidence: r.low_confidence,
-      detectedFoods: [{
+      isAmbiguous,
+      detectedFoods: (!isAmbiguous && r.food_name) ? [{
         name: formatFoodName(r.food_name),
         portionSize: multiplier === 1 ? r.serving_description : `${multiplier}× ${r.serving_description}`,
-        calories: Math.round(r.calories * multiplier),
-        carbs:    Math.round(r.carbs_g  * multiplier),
-        protein:  Math.round(r.protein_g * multiplier),
-        fat:      Math.round(r.fat_g    * multiplier),
-      }],
+        calories: Math.round((r.calories || 0) * multiplier),
+        carbs:    Math.round((r.carbs_g  || 0) * multiplier),
+        protein:  Math.round((r.protein_g || 0) * multiplier),
+        fat:      Math.round((r.fat_g    || 0) * multiplier),
+      }] : [],
     };
     renderResult(lastDetection);
   } catch (err) {
@@ -114,53 +115,89 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
 });
 
 function renderResult(d) {
-  const total  = d.detectedFoods.reduce((s, f) => s + f.calories, 0);
-  const macros = d.detectedFoods.reduce((a, f) => ({ carbs: a.carbs + f.carbs, protein: a.protein + f.protein, fat: a.fat + f.fat }), { carbs: 0, protein: 0, fat: 0 });
   result.classList.remove('hidden');
-  result.innerHTML = `
-    <div class="card">
-      <div class="row between mb-1">
-        <div class="card-title">Recognized</div>
-        <span class="badge ${d.lowConfidence ? 'badge-warning' : 'badge-success'}">Confidence ${Math.round(d.confidence * 100)}%</span>
+
+  if (d.isAmbiguous) {
+    result.innerHTML = `
+      <div class="card">
+        <div class="row between mb-1 align-center">
+          <div class="card-title" style="color:var(--amber); margin-bottom:0">Ambiguous / Unrecognized</div>
+          <span class="badge badge-warning">Confidence ${Math.round(d.confidence * 100)}% (&lt; 55%)</span>
+        </div>
+        <p class="text-sm muted mb-2">
+          The photo could not be identified with high confidence (threshold is 55%). Please select or type what you ate below:
+        </p>
+        <div class="mb-2">
+          <label for="food-search" style="font-weight:600; display:block; margin-bottom:0.35rem">Select or type food name</label>
+          <input id="food-search" list="ng-foods" placeholder="Type a Nigerian food (e.g. Jollof Rice, Egusi, Akara)..." style="width:100%" autofocus />
+          <datalist id="ng-foods">${NIGERIAN_FOODS.map(n => `<option value="${n}"></option>`).join('')}</datalist>
+        </div>
+        <div class="row gap-sm mt-2 flex-wrap">
+          <button class="btn btn-primary" id="confirm-btn"><i data-lucide="check"></i> Add to log</button>
+        </div>
       </div>
-      <div class="list">
-        ${d.detectedFoods.map(f => `
-          <div class="list-item">
-            <div style="flex:1">
-              <div style="font-weight:600">${f.name}</div>
-              <div class="text-xs muted">${f.portionSize} · ${f.carbs}g C · ${f.protein}g P · ${f.fat}g F</div>
+    `;
+  } else {
+    const total  = d.detectedFoods.reduce((s, f) => s + f.calories, 0);
+    const macros = d.detectedFoods.reduce((a, f) => ({ carbs: a.carbs + f.carbs, protein: a.protein + f.protein, fat: a.fat + f.fat }), { carbs: 0, protein: 0, fat: 0 });
+    result.innerHTML = `
+      <div class="card">
+        <div class="row between mb-1 align-center">
+          <div class="card-title" style="margin-bottom:0">Recognized</div>
+          <span class="badge badge-success">Confidence ${Math.round(d.confidence * 100)}%</span>
+        </div>
+        <div class="list">
+          ${d.detectedFoods.map(f => `
+            <div class="list-item">
+              <div style="flex:1">
+                <div style="font-weight:600">${f.name}</div>
+                <div class="text-xs muted">${f.portionSize} · ${f.carbs}g C · ${f.protein}g P · ${f.fat}g F</div>
+              </div>
+              <div class="num" style="font-weight:600">${f.calories}<span class="text-xs muted"> kcal</span></div>
             </div>
-            <div class="num" style="font-weight:600">${f.calories}<span class="text-xs muted"> kcal</span></div>
-          </div>
-        `).join('')}
+          `).join('')}
+        </div>
+        <div class="row between mt-2"><strong>Total</strong><span class="num" style="font-weight:600">${total} kcal · ${macros.carbs}g C · ${macros.protein}g P · ${macros.fat}g F</span></div>
+        <div class="row gap-sm mt-2 flex-wrap">
+          <button class="btn btn-primary" id="confirm-btn"><i data-lucide="check"></i> Add to log</button>
+          <button class="btn btn-ghost" id="correct-btn"><i data-lucide="pencil"></i> Did we get this right?</button>
+        </div>
+        <div id="correct-panel" class="hidden mt-2">
+          <label for="food-search" style="font-weight:600; display:block; margin-bottom:0.35rem">Pick the correct item</label>
+          <input id="food-search" list="ng-foods" placeholder="Start typing a Nigerian food…" style="width:100%" />
+          <datalist id="ng-foods">${NIGERIAN_FOODS.map(n => `<option value="${n}"></option>`).join('')}</datalist>
+          <p class="text-xs muted mt-1">Your correction helps the model learn over time.</p>
+        </div>
       </div>
-      <div class="row between mt-2"><strong>Total</strong><span class="num" style="font-weight:600">${total} kcal · ${macros.carbs}g C · ${macros.protein}g P · ${macros.fat}g F</span></div>
-      <div class="row gap-sm mt-2 flex-wrap">
-        <button class="btn btn-primary" id="confirm-btn"><i data-lucide="check"></i> Add to log</button>
-        <button class="btn btn-ghost" id="correct-btn"><i data-lucide="pencil"></i> Did we get this right?</button>
-      </div>
-      <div id="correct-panel" class="hidden mt-2">
-        <label for="food-search">Pick the correct item</label>
-        <input id="food-search" list="ng-foods" placeholder="Start typing a Nigerian food…" />
-        <datalist id="ng-foods">${NIGERIAN_FOODS.map(n => `<option value="${n}"></option>`).join('')}</datalist>
-        <p class="text-xs muted mt-1">Your correction helps the model learn over time.</p>
-      </div>
-    </div>
-  `;
+    `;
+  }
+
   initLucide();
 
   document.getElementById('confirm-btn').addEventListener('click', async () => {
     const hour = new Date().getHours();
     const mealType = hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 19 ? 'dinner' : 'snack';
+    
+    let chosenFood = document.getElementById('food-search')?.value?.trim();
+    if (!chosenFood && d.isAmbiguous) {
+      return toast('Please select or type a food name to add to log.', 'error');
+    }
+    if (!chosenFood && d.detectedFoods?.[0]?.name) {
+      chosenFood = d.detectedFoods[0].name;
+    }
+
     try {
       const formData = new FormData();
       if (d.imageUrl) {
         formData.append('image_url', d.imageUrl);
-        if (d.detectedFoods?.[0]?.name) {
-          formData.append('food_name', d.detectedFoods[0].name.toLowerCase().replace(/ /g, '_'));
+        if (chosenFood) {
+          formData.append('food_name', chosenFood.toLowerCase().replace(/ /g, '_'));
         }
       } else if (selectedFile) {
         formData.append('file', selectedFile);
+        if (chosenFood) {
+          formData.append('food_name', chosenFood.toLowerCase().replace(/ /g, '_'));
+        }
       }
       formData.append('meal_type', mealType);
       formData.append('portion_multiplier', String(d.multiplier));
@@ -173,9 +210,12 @@ function renderResult(d) {
     }
   });
 
-  document.getElementById('correct-btn').addEventListener('click', () => {
-    document.getElementById('correct-panel').classList.toggle('hidden');
-  });
+  const correctBtn = document.getElementById('correct-btn');
+  if (correctBtn) {
+    correctBtn.addEventListener('click', () => {
+      document.getElementById('correct-panel')?.classList.toggle('hidden');
+    });
+  }
 }
 
 const dateFilter = document.getElementById('date-filter');

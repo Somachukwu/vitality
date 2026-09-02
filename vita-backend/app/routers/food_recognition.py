@@ -200,10 +200,15 @@ async def log_meal_from_photo(
             else:
                 final_image_url = f"/uploads/meals/{filename}"
 
-    # If food_name provided without result dict, perform lookup or fallback
-    if not result:
+    # If user provided a food_name override or if result is missing/ambiguous, lookup nutrition for the specified food
+    if food_name or not result or result.get("is_ambiguous") or not result.get("food_name"):
         from food_cv.nutrition_lookup import get_nutrition
-        dish = food_name or "jollof_rice"
+        dish = (food_name or "").strip()
+        if not dish:
+            raise HTTPException(
+                status_code=422,
+                detail="The food could not be recognized with >=55% confidence. Please select or enter the food name.",
+            )
         nutrition = get_nutrition(dish)
         result = {
             "food_name": dish,

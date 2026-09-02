@@ -27,9 +27,9 @@ from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from . import config
 from .nutrition_lookup import get_nutrition
 
-# Confidence below this triggers a "low confidence" flag so your frontend
-# can prompt the user to confirm/correct the identified dish.
-LOW_CONFIDENCE_THRESHOLD = 0.6
+# Confidence below this threshold (55%) is treated as ambiguous and will not return a class name.
+CONFIDENCE_THRESHOLD = 0.55
+LOW_CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD
 
 
 @lru_cache(maxsize=1)
@@ -51,14 +51,29 @@ def recognize_food(image_path: str) -> dict:
     predictions = model.predict(batch, verbose=0)[0]
     top_idx = int(np.argmax(predictions))
     confidence = float(predictions[top_idx])
-    food_class = class_names[top_idx]
+    raw_class = class_names[top_idx]
 
-    nutrition = get_nutrition(food_class)
+    # If confidence < 55%, treat as ambiguous and do not return class name
+    if confidence < CONFIDENCE_THRESHOLD:
+        return {
+            "food_name": None,
+            "confidence": confidence,
+            "is_ambiguous": True,
+            "low_confidence": True,
+            "calories": None,
+            "protein_g": None,
+            "carbs_g": None,
+            "fat_g": None,
+            "serving_description": None,
+        }
+
+    nutrition = get_nutrition(raw_class)
 
     return {
-        "food_name": food_class,
+        "food_name": raw_class,
         "confidence": confidence,
-        "low_confidence": confidence < LOW_CONFIDENCE_THRESHOLD,
+        "is_ambiguous": False,
+        "low_confidence": False,
         "calories": nutrition.calories,
         "protein_g": nutrition.protein_g,
         "carbs_g": nutrition.carbs_g,
