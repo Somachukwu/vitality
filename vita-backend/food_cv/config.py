@@ -36,19 +36,19 @@ TEST_RATIO = 0.15
 # Order doesn't matter — it's inferred from folder names at data-prep time,
 # this list is just for reference/documentation.
 CLASSES = [
-    "akarabread",
+    "abacha",
+    "akara",
     "banga",
+    "beans",
     "bitterleaf",
-    "edikakong",
     "egusi",
     "ewedu",
-    "garriandgrounut",
+    "fried rice",
     "jellof",
     "moimoi",
-    "nkwobi",
     "ofeowerri",
     "ogbono",
     "okra",
-    "pufpuf"
-    # add more as you collect data
+    "pufpuf",
+    "spaghetti",
 ]

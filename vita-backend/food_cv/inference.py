@@ -64,6 +64,7 @@ def recognize_food(image_path: str) -> dict:
             "protein_g": None,
             "carbs_g": None,
             "fat_g": None,
+            "fiber_g": None,
             "serving_description": None,
         }
 
@@ -78,6 +79,7 @@ def recognize_food(image_path: str) -> dict:
         "protein_g": nutrition.protein_g,
         "carbs_g": nutrition.carbs_g,
         "fat_g": nutrition.fat_g,
+        "fiber_g": nutrition.fiber_g,
         "serving_description": nutrition.serving_description,
     }
 

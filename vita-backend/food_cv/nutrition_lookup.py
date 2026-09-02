@@ -29,31 +29,90 @@ class NutritionInfo:
     protein_g: float
     carbs_g: float
     fat_g: float
+    fiber_g: float | None
     serving_description: str
 
 
-# TODO: verify against the Nigerian Food Composition Table (NFCT) and cite it in your report.
 NUTRITION_TABLE: dict[str, NutritionInfo] = {
-    "akarabread": NutritionInfo(350, 12, 40, 15, "2 akara balls + 2 slices bread"),
-    "banga": NutritionInfo(450, 18, 8, 35, "1 bowl (~250g), soup only, no starch"),
-    "bitterleaf": NutritionInfo(380, 20, 8, 28, "1 bowl (~250g) with meat/fish"),
-    "edikakong": NutritionInfo(420, 24, 8, 30, "1 bowl (~300g) with meat/fish"),
-    "egusi": NutritionInfo(520, 22, 12, 40, "1 bowl (~250g) with meat/fish"),
-    "ewedu": NutritionInfo(150, 6, 10, 9, "1 bowl (~200g), soup only"),
-    "garriandgrounut": NutritionInfo(380, 8, 65, 12, "1 serving (~150g garri + 30g groundnuts)"),
-    "jellof": NutritionInfo(450, 8, 75, 12, "1 plate (~300g)"),
-    "moimoi": NutritionInfo(210, 14, 18, 9, "1 wrap (~150g)"),
-    "nkwobi": NutritionInfo(480, 26, 6, 38, "1 serving (~200g)"),
-    "ofeowerri": NutritionInfo(430, 24, 8, 32, "1 bowl (~300g) with meat/fish"),
-    "ogbono": NutritionInfo(480, 20, 10, 38, "1 bowl (~250g) with meat/fish"),
-    "okra": NutritionInfo(380, 20, 10, 26, "1 bowl (~250g) with meat/fish"),
-    "pufpuf": NutritionInfo(300, 5, 40, 14, "4-5 pieces (~100g)"),
+    "abacha": NutritionInfo(430.4, 14.30, 62.70, 13.60, 6.70, "per 100 g"),
+    "fried rice": NutritionInfo(172.88, 2.56, 32.55, 3.36, 1.10, "per 100 g"),
+    "akara": NutritionInfo(218.0, 12.07, 23.76, 8.30, 0.87, "per 100 g"),
+    "banga": NutritionInfo(131.7, 13.61, 1.36, 7.98, 0.38, "per 100 g"),
+    "bitterleaf": NutritionInfo(179.0, 9.40, 14.20, 9.40, 4.70, "per 100 g"),
+    "egusi": NutritionInfo(179.5, 8.59, 1.95, 15.26, 0.79, "per 100 g"),
+    "ewedu": NutritionInfo(37.0, 2.00, 5.00, 1.00, 1.00, "per 100 g"),
+    "beans": NutritionInfo(147.56, 11.605, 21.52, 0.496, 5.30, "per 100 g"),
+    "jellof": NutritionInfo(144.545, 2.635, 27.505, 2.665, None, "per 100 g"),
+    "moimoi": NutritionInfo(108.406, 6.47, 15.74, 2.174, None, "per 100 g"),
+    "ofeowerri": NutritionInfo(438.0, 28.00, 14.00, 30.00, 6.00, "per 100 g"),
+    "ogbono": NutritionInfo(227.0, 11.14, 0.74, 19.94, 0.93, "per 100 g"),
+    "okra": NutritionInfo(172.3, 11.17, 4.44, 12.21, 1.87, "per 100 g"),
+    "pufpuf": NutritionInfo(242.0, 5.00, 51.00, 2.00, 2.00, "per 100 g"),
+    "spaghetti": NutritionInfo(123.5, 4.20, 26.00, 0.30, None, "per 100 g"),
+}
+
+# Alias map to handle model class names, underscores, and common variations
+ALIASES: dict[str, str] = {
+    "akarabread": "akara",
+    "akara bread": "akara",
+    "fried_rice": "fried rice",
+    "friedrice": "fried rice",
+    "jollof": "jellof",
+    "jollof_rice": "jellof",
+    "jollofrice": "jellof",
+    "jellof_rice": "jellof",
+    "jellof rice": "jellof",
+    "moi_moi": "moimoi",
+    "moi moi": "moimoi",
+    "moyi moyi": "moimoi",
+    "moyimoyi": "moimoi",
+    "puff_puff": "pufpuf",
+    "puff puff": "pufpuf",
+    "puffpuff": "pufpuf",
+    "ofe_owerri": "ofeowerri",
+    "ofe owerri": "ofeowerri",
+    "banga_soup": "banga",
+    "banga soup": "banga",
+    "bitterleaf_soup": "bitterleaf",
+    "bitterleaf soup": "bitterleaf",
+    "egusi_soup": "egusi",
+    "egusi soup": "egusi",
+    "ogbono_soup": "ogbono",
+    "ogbono soup": "ogbono",
+    "okra_soup": "okra",
+    "okra soup": "okra",
+    "okro": "okra",
+    "okro soup": "okra",
+    "ewedu_soup": "ewedu",
+    "ewedu soup": "ewedu",
+    "beans porridge": "beans",
+    "beans_porridge": "beans",
 }
 
 
 def get_nutrition(food_class: str) -> NutritionInfo:
-    if food_class not in NUTRITION_TABLE:
-        raise KeyError(
-            f"No nutrition entry for '{food_class}'. Add it to NUTRITION_TABLE in nutrition_lookup.py."
-        )
-    return NUTRITION_TABLE[food_class]
+    key = food_class.strip().lower()
+    # Check direct match
+    if key in NUTRITION_TABLE:
+        return NUTRITION_TABLE[key]
+
+    # Check alias map
+    if key in ALIASES and ALIASES[key] in NUTRITION_TABLE:
+        return NUTRITION_TABLE[ALIASES[key]]
+
+    # Try matching without underscores or extra spaces
+    normalized_key = key.replace("_", " ").strip()
+    if normalized_key in NUTRITION_TABLE:
+        return NUTRITION_TABLE[normalized_key]
+    if normalized_key in ALIASES and ALIASES[normalized_key] in NUTRITION_TABLE:
+        return NUTRITION_TABLE[ALIASES[normalized_key]]
+
+    no_space_key = key.replace("_", "").replace(" ", "").strip()
+    if no_space_key in NUTRITION_TABLE:
+        return NUTRITION_TABLE[no_space_key]
+    if no_space_key in ALIASES and ALIASES[no_space_key] in NUTRITION_TABLE:
+        return NUTRITION_TABLE[ALIASES[no_space_key]]
+
+    raise KeyError(
+        f"No nutrition entry for '{food_class}'. Available items: {', '.join(sorted(NUTRITION_TABLE.keys()))}"
+    )

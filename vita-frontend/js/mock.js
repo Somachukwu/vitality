@@ -68,9 +68,19 @@ export const mockRecommendations = [
 ];
 
 export const NIGERIAN_FOODS = [
-  'Jollof Rice','Fried Rice','Ofada Rice','Pounded Yam','Eba','Amala','Fufu','Semovita',
-  'Egusi Soup','Ogbono Soup','Efo Riro','Bitterleaf Soup','Okra Soup','Banga Soup',
-  'Suya','Moi Moi','Akara','Pepper Soup','Nkwobi','Isi Ewu',
-  'Grilled Chicken','Fried Plantain','Boiled Plantain','Yam Porridge','Beans Porridge',
-  'Pap (Ogi)','Boiled Egg','Catfish Pepper Soup','Ewa Agoyin',
+  'Abacha',
+  'Akara',
+  'Banga Soup',
+  'Beans',
+  'Bitterleaf Soup',
+  'Egusi Soup',
+  'Ewedu Soup',
+  'Fried Rice',
+  'Jellof Rice',
+  'Moi Moi',
+  'Ofe Owerri',
+  'Ogbono Soup',
+  'Okra Soup',
+  'Puff Puff',
+  'Spaghetti',
 ];
