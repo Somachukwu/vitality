@@ -174,6 +174,16 @@ function getRotatingMorningInsight(name) {
   };
 }
 
+// Persist the Good Morning insight once per calendar day using a localStorage guard.
+// This ensures it fires at the first page load after midnight (12:00 AM), not every login.
+async function checkAndPersistMorningInsight(firstName) {
+  const key = `vita_morning_${todayISO()}`;
+  if (localStorage.getItem(key)) return; // already persisted today
+  const morningCard = getRotatingMorningInsight(firstName);
+  await persistContextualInsight(morningCard);
+  localStorage.setItem(key, '1');
+}
+
 let recSwitchTimer = null;
 
 function renderSingleRecContent(rec) {
@@ -290,8 +300,6 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const savedTargets = userProfile.notification_preferences?.targets || {};
   const targetSteps = savedTargets.target_steps || 10000;
   const targetProtein = savedTargets.target_protein || Math.round((userProfile.weight || 70) * 1.4);
-  const targetSleep = savedTargets.target_sleep || 8.0;
-
   const steps = vitalsData?.steps || 0;
   const sleepHours = vitalsData?.sleepDurationMin ? Number((vitalsData.sleepDurationMin / 60).toFixed(1)) : 0;
   const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
@@ -299,8 +307,6 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const mealsCount = (mealsData || []).length;
 
   const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
-  const isMorningWindow = hour >= 0 && hour < 12; // 12:00 AM Midnight to 11:59 AM
-
   const today = todayISO();
   const joinDate = userProfile.created_at ? getLocalTimestampDate(userProfile.created_at) : '';
   const isJoinedToday = joinDate === today;
@@ -320,36 +326,18 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     };
   }
 
-  // 2. Morning Window (or anytime before the first meal of the day is logged):
-  // UNTIL A MEAL IS LOGGED, GOOD MORNING INSIGHTS ARE THE PRIORITY EVERY MORNING!
-  // (Starts the next morning for new users even if no meal was logged the day they joined).
-  if (isMorningWindow || (mealsCount === 0 && hour < 14)) {
-    const morningRec = {
-      ...getRotatingMorningInsight(firstName),
-      tabLabel: '☀️ Morning Insight',
-    };
+  // 2. Critical Safety Alert always overrides everything
+  if (isCritical) return topRec;
 
-    // If an active Critical Alert exists, constantly alternate between Morning Tip & Critical Alert!
-    if (isCritical) {
-      return {
-        isAlternating: true,
-        cards: [
-          morningRec,
-          { ...topRec, tabLabel: '🚨 Health Alert', badge: 'Critical Health Alert 🚨' },
-        ],
-      };
-    }
-
-    // Until a meal is logged, Good Morning Insight is the absolute priority!
-    if (mealsCount === 0) {
-      return morningRec;
-    }
-  }
-
-  // 3. Critical Alert outside of morning / when meals are logged
-  if (isCritical) {
+  // 3. Latest-wins: if a recommendation was triggered/persisted today, show it.
+  //    The morning insight is persisted at 12:00 AM, so at the start of the day
+  //    topRec will already be the morning card. As the day progresses and new
+  //    insights are triggered (milestones, evening cards, backend rules), they are
+  //    persisted and become the new topRec on the next refresh cycle.
+  if (topRec && topRec.created_at && getLocalTimestampDate(topRec.created_at) === today) {
     return topRec;
   }
+
 
   // 4. Multi-Target Milestone Celebrations (After meals or activity logged)
   // A. Steps Target Milestone
@@ -631,6 +619,10 @@ async function loadAll() {
     if (goalEl) goalEl.textContent = `Goal: ${stepsGoal.toLocaleString()}`;
   } catch { /* fall back to cached/default goal */ }
 
+  // Persist today's Good Morning insight exactly once, at the first page load after midnight.
+  // Uses a localStorage date-key so it never re-triggers on subsequent logins the same day.
+  await checkAndPersistMorningInsight(userName).catch(() => {});
+
   // 1. Fetch Vitals (for user's local date)
   let latestWeight = null;
   let adaptedVitals = null;
@@ -723,11 +715,14 @@ async function syncNow() {
 document.getElementById('sync-btn').addEventListener('click', (e) => syncNow(e.currentTarget));
 document.getElementById('sync-btn-2').addEventListener('click', (e) => syncNow(e.currentTarget));
 
-// Poll vitals every 30s
+// Poll vitals every 30s; also checks for midnight crossover to persist morning insight
 setInterval(async () => {
   try {
     const v = await api.get('/vitals/latest?date_str=' + todayISO());
     renderVitals(adaptVitals(v));
     renderBmi(v.weight ?? user.weight, user.height);
   } catch { /* ignore */ }
+  // If midnight just rolled over, persist the morning insight for the new day
+  const firstName = user.name?.split(' ')[0] || 'there';
+  checkAndPersistMorningInsight(firstName).catch(() => {});
 }, 30000);

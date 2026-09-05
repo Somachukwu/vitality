@@ -54,8 +54,7 @@ function getDateGroup(dateStr) {
   if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
   const daysDiff = Math.floor((now - d) / 864e5);
   if (daysDiff < 7) return 'This Week';
-  if (daysDiff < 30) return 'This Month';
-  return 'Earlier';
+  return 'This Month'; // everything older than 7 days — no separate "Earlier" bucket
 }
 
 function formatRelativeTime(dateStr) {
@@ -67,7 +66,8 @@ function formatRelativeTime(dateStr) {
   const diffDays = Math.floor(diffHrs / 24);
   if (diffMins < 2) return 'Just now';
   if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHrs < 24) return `${diffHrs}h ago`;
+  // Within 24 hours — show the exact trigger time (e.g. "9:47 AM")
+  if (diffHrs < 24) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays} days ago`;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -121,7 +121,7 @@ function render() {
 
   // Group by date
   const groups = {};
-  const groupOrder = ['Today', 'Yesterday', 'This Week', 'This Month', 'Earlier'];
+  const groupOrder = ['Today', 'Yesterday', 'This Week', 'This Month'];
   list.forEach(r => {
     const g = getDateGroup(r.created_at);
     if (!groups[g]) groups[g] = [];
