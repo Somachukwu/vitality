@@ -397,7 +397,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
         rule_id: 'time.evening_deficit_lock',
       };
     }
-    if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.80) {
+    if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.90) {
       const remaining = calorieTarget - consumedCals;
       return {
         badge: 'Hypertrophy Fuel 🥩',
@@ -475,6 +475,28 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
         rule_id: 'sleep.short_wellness',
       };
     }
+  }
+
+  // E. Low Steps → Sleep Advice (after 8PM, wearable synced but < 5,000 steps)
+  // steps > 0 ensures the wearable was synced today; we don't fire on "no data"
+  if (hour >= 20 && steps > 0 && steps < 5000) {
+    let sleepMsg = '';
+    let sleepBadge = 'Rest & Recovery 🌙';
+    if (goal === 'weight_loss') {
+      sleepMsg = `You logged ${steps.toLocaleString()} steps today — a gentle, low-movement day. In a calorie deficit, sleep becomes your primary recovery tool. Aim for <strong>8.5 hours</strong> tonight to protect lean muscle, regulate ghrelin, and keep your appetite in check tomorrow.`;
+    } else if (goal === 'weight_gain') {
+      sleepMsg = `You logged ${steps.toLocaleString()} steps today. A quieter movement day means tonight's sleep carries extra weight for your gains — over 70% of growth hormone is released during deep sleep. Target <strong>9 hours</strong> tonight to maximise the muscle protein synthesis window.`;
+      sleepBadge = 'Recovery Window 🌙';
+    } else {
+      sleepMsg = `You logged ${steps.toLocaleString()} steps today — a restful, gentle day. Let sleep do the heavy lifting: aim for <strong>8 hours</strong> tonight to reset your metabolism, restore energy, and set yourself up for a more active tomorrow.`;
+    }
+    return {
+      badge: sleepBadge,
+      title: 'Prioritise Sleep Tonight',
+      message: sleepMsg,
+      action_data: { action_label: 'View Sleep Data', route: 'vitals.html' },
+      rule_id: 'time.morning_low_steps_sleep',
+    };
   }
 
   // 6. Return most recent top recommendation from backend, or morning insight fallback
@@ -569,7 +591,8 @@ async function persistContextualInsight(card) {
   } else if (
     card.rule_id.startsWith('safety.') ||
     card.rule_id.startsWith('sleep.') ||
-    card.rule_id.startsWith('vitals.')
+    card.rule_id.startsWith('vitals.') ||
+    card.rule_id === 'time.morning_low_steps_sleep'
   ) {
     type = 'health_alert';
   } else if (

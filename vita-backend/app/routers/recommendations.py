@@ -178,7 +178,13 @@ def get_grouped_recommendations(
 
     recs = (
         db.query(Recommendation)
-        .filter(Recommendation.user_id == current_user.id)
+        .filter(
+            Recommendation.user_id == current_user.id,
+            # Filter to today's cards so stale cards from previous days don't
+            # show up as "active" in the grouped view (BUG-8 fix).
+            # Fall back to a 48-hour window in case today's generation hasn't run yet.
+            Recommendation.created_at >= datetime.combine(today_start, datetime.min.time()) - timedelta(hours=48),
+        )
         .order_by(Recommendation.created_at.desc())
         .limit(20)
         .all()

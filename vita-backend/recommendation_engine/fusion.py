@@ -10,6 +10,8 @@ from datetime import date
 from statistics import mean
 from typing import Iterable, Optional
 
+import numpy as np
+
 from .models import (
     ActivityLevel,
     DailySnapshot,
@@ -78,15 +80,17 @@ def build_daily_snapshot(
     hr_values = [v.heart_rate_bpm for v in vitals_list if v.heart_rate_bpm is not None]
     spo2_values = [v.spo2_pct for v in vitals_list if v.spo2_pct is not None]
     weight_values = [v.weight_kg for v in vitals_list if v.weight_kg is not None]
-    steps_total = sum(v.steps or 0 for v in vitals_list)
+
+    # total_steps: None when no vitals at all (wearable not synced), 0 when synced but no steps
+    steps_total: Optional[int] = None
+    if vitals_list:
+        steps_total = sum(v.steps or 0 for v in vitals_list)
+
     active_minutes_total = sum(v.active_minutes or 0 for v in vitals_list)
 
-    # Resting HR approximated as 10th percentile of daytime HR readings
-    resting_hr = None
-    if hr_values:
-        sorted_hr = sorted(hr_values)
-        idx = max(0, int(len(sorted_hr) * 0.1) - 1)
-        resting_hr = sorted_hr[idx]
+    # Resting HR: accurate 10th-percentile of all HR readings
+    # Requires numpy for a correct percentile (manual index arithmetic was off)
+    resting_hr = float(np.percentile(hr_values, 10)) if hr_values else None
 
     latest_weight = weight_values[-1] if weight_values else user_profile.weight_kg
 
@@ -94,14 +98,25 @@ def build_daily_snapshot(
     total_sleep_hours: Optional[float] = None
     sleep_stages: dict[str, int] = {}
     if sleep_list:
-        total_minutes = sum(s.duration_min or 0 for s in sleep_list)
-        total_sleep_hours = round(total_minutes / 60.0, 2)
+        light = sum(s.light_min or 0 for s in sleep_list)
+        deep = sum(s.deep_min or 0 for s in sleep_list)
+        rem = sum(s.rem_min or 0 for s in sleep_list)
+        awake = sum(s.awake_min or 0 for s in sleep_list)
+
         sleep_stages = {
-            "light_min": sum(s.light_min or 0 for s in sleep_list),
-            "deep_min": sum(s.deep_min or 0 for s in sleep_list),
-            "rem_min": sum(s.rem_min or 0 for s in sleep_list),
-            "awake_min": sum(s.awake_min or 0 for s in sleep_list),
+            "light_min": light,
+            "deep_min": deep,
+            "rem_min": rem,
+            "awake_min": awake,
         }
+
+        # Prefer stage-based total (light + deep + rem) — excludes awake time.
+        # Fall back to duration_min only when no stage data is recorded.
+        stage_total = light + deep + rem
+        if stage_total > 0:
+            total_sleep_hours = round(stage_total / 60.0, 2)
+        else:
+            total_sleep_hours = round(sum(s.duration_min or 0 for s in sleep_list) / 60.0, 2)
 
     # --- 3. Food / Nutrition Aggregation ---
     total_calories = sum(f.calories for f in food_list)
@@ -133,5 +148,8 @@ def build_daily_snapshot(
         calorie_balance=round(total_calories - calorie_target, 1) if food_list else None,
         meals_logged=len(food_list),
         avg_portion_confidence=round(avg_confidence, 2),
+        # avg_stress_score: DB Vitals table has no stress column yet; leave as None
+        avg_stress_score=None,
+        hr_reading_count=len(hr_values),
     )
 

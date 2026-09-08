@@ -243,6 +243,41 @@ def _rule_elevated_resting_hr_action(facts: dict[str, Any]) -> Recommendation:
 
 
 
+# --- Supporting Insight: Multi-System Physiological Anomaly (Isolation Forest) ---
+def _rule_vitals_anomaly_cluster_action(facts: dict[str, Any]) -> Recommendation:
+    score = facts.get("anomaly_score", -0.25)
+    s = _snapshot(facts)
+    # Build a human-readable summary of which metrics contributed
+    contributors = []
+    if s.resting_heart_rate and s.avg_heart_rate:
+        contributors.append(f"elevated HR ({s.avg_heart_rate:.0f} bpm avg)")
+    if s.total_sleep_hours is not None and s.total_sleep_hours < 6.5:
+        contributors.append(f"short sleep ({s.total_sleep_hours:.1f}h)")
+    if s.avg_spo2 is not None and s.avg_spo2 < 95.0:
+        contributors.append(f"lower SpO₂ ({s.avg_spo2:.1f}%)")
+    if s.total_steps is not None and s.total_steps < 3000:
+        contributors.append(f"low movement ({s.total_steps:,} steps)")
+    contributor_str = ", ".join(contributors) if contributors else "multiple vitals metrics"
+
+    return Recommendation(
+        category=Category.HEALTH_ALERT.value,
+        priority=Priority.MEDIUM,
+        tier=Tier.SUPPORTING_INSIGHT,
+        rule_id="vitals.anomaly_cluster",
+        title="Unusual Vitals Pattern Detected",
+        message=(
+            f"Today's combination of {contributor_str} is statistically unusual compared to your "
+            f"recent baseline (anomaly score: {score:.2f}). This multi-metric divergence can reflect "
+            "early stress accumulation, overtraining, or illness onset. Prioritize rest and hydration today."
+        ),
+        evidence={"anomaly_score": score, "contributors": contributors},
+        action_data={"action_label": "View Vitals", "route": "vitals.html"},
+        cooldown_days=2,
+        confidence=0.80,
+    )
+
+
+
 V1_RULES = [
     # 1. Incomplete Meal Logging
     Rule(
@@ -250,12 +285,14 @@ V1_RULES = [
         category=Category.NUTRITION.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            _profile(f).target_calories is not None
+            # Use snapshot.calorie_target (always computed via BMR fusion),
+            # NOT profile.target_calories (only set when user enters manual override).
+            # The old guard blocked this rule for all new users who hadn't configured a target.
+            _snapshot(f).calorie_target is not None
             and (
                 _snapshot(f).meals_logged == 0
                 or (
                     _snapshot(f).meals_logged in (1, 2)
-                    and _snapshot(f).calorie_target is not None
                     and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
                 )
             )
@@ -326,10 +363,27 @@ V1_RULES = [
         condition=lambda f: (
             f.get("resting_hr_baseline") is not None
             and _snapshot(f).resting_heart_rate is not None
+            # Require >= 4 HR readings today for a reliable 10th-percentile estimate.
+            # With fewer readings the approximation is too noisy (e.g. one workout spike).
+            and _snapshot(f).hr_reading_count >= 4
             and _snapshot(f).resting_heart_rate > (f["resting_hr_baseline"] + 7.0)
         ),
         action=_rule_elevated_resting_hr_action,
         weight=40,
+        cooldown_days=2,
+    ),
+    # Supporting Insight: Multi-System Physiological Anomaly (Isolation Forest)
+    # This is the first rule to consume the Isolation Forest output from detect_anomaly().
+    # It fires only when vitals_anomaly=True AND anomaly_score < -0.2 (hard gate in anomaly_detection.py).
+    Rule(
+        rule_id="vitals.anomaly_cluster",
+        category=Category.HEALTH_ALERT.value,
+        tier=Tier.SUPPORTING_INSIGHT,
+        condition=lambda f: (
+            f.get("vitals_anomaly") is True
+        ),
+        action=_rule_vitals_anomaly_cluster_action,
+        weight=55,
         cooldown_days=2,
     ),
 ]

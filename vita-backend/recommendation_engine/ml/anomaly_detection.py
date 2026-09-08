@@ -57,14 +57,22 @@ def detect_anomaly(history: list[DailySnapshot], today: DailySnapshot) -> dict:
     except ImportError:
         return {}
 
-    model = IsolationForest(n_estimators=50, contamination=0.15, random_state=42)
+    # contamination=0.05: expect ~5% of days to be genuinely anomalous.
+    # The old value of 0.15 forced 15% of all history days to be flagged,
+    # causing constant false positives once the anomaly rule is wired up.
+    # n_estimators=100 is the sklearn-recommended default for reliable trees.
+    model = IsolationForest(n_estimators=100, contamination=0.05, random_state=42)
     model.fit(X)
 
     prediction = model.predict(today_vec)[0]  # -1 = anomaly, 1 = normal
     score = float(model.decision_function(today_vec)[0])
 
+    # Hard score gate: only flag as anomaly when score is clearly negative (< -0.2).
+    # This prevents the "least-normal healthy day" from triggering a card.
+    is_anomaly = bool(prediction == -1 and score < -0.2)
+
     return {
-        "vitals_anomaly": bool(prediction == -1),
+        "vitals_anomaly": is_anomaly,
         "anomaly_score": round(score, 3),
     }
 

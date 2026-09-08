@@ -58,6 +58,8 @@ def detect_trends(history: list[DailySnapshot]) -> dict[str, Any]:
 
     # --- 2. Step / Activity Trend (Last 7 Days) ---
     last_7 = history[-7:] if len(history) >= 7 else history
+    # total_steps is Optional[int]: None means wearable not synced that day.
+    # Exclude None days from the average so phantom zero-step days don't drag down the mean.
     step_values = [s.total_steps for s in last_7 if s.total_steps is not None]
     if step_values:
         facts["weekly_avg_steps"] = int(np.mean(step_values))

@@ -116,7 +116,9 @@ class DailySnapshot:
     resting_heart_rate: Optional[float] = None
     avg_spo2: Optional[float] = None
     min_spo2: Optional[float] = None
-    total_steps: int = 0
+    # total_steps is Optional so rules can distinguish "wearable not synced" (None)
+    # from "synced but zero steps" (0). Defaults to None until vitals are present.
+    total_steps: Optional[int] = None
     active_minutes: int = 0
     weight_kg: Optional[float] = None
     total_sleep_hours: Optional[float] = None
@@ -129,6 +131,10 @@ class DailySnapshot:
     calorie_balance: Optional[float] = None  # intake - target; +ve = surplus
     meals_logged: int = 0
     avg_portion_confidence: float = 1.0
+    # Stress score — aggregated from wearable when available (None if not supported)
+    avg_stress_score: Optional[float] = None
+    # Number of HR readings today — used to gate noisy resting-HR comparisons
+    hr_reading_count: int = 0
 
 
 @dataclass

@@ -36,6 +36,15 @@ from .rules_engine import RuleEngine
 _engine = RuleEngine()
 _engine.register_all(ALL_RULES)
 
+# Maps the string stored in notification_preferences.targets.activity_level → ActivityLevel enum
+_ACTIVITY_MAP: dict[str, ActivityLevel] = {
+    "sedentary":  ActivityLevel.SEDENTARY,
+    "light":      ActivityLevel.LIGHT,
+    "moderate":   ActivityLevel.MODERATE,
+    "active":     ActivityLevel.ACTIVE,
+    "very_active": ActivityLevel.VERY_ACTIVE,
+}
+
 
 def generate_recommendations(
     profile: UserProfile,
@@ -130,7 +139,13 @@ def generate_and_persist_recommendations(
         sex=sex_enum,
         height_cm=float(user.height) if user.height else 170.0,
         weight_kg=float(user.weight) if user.weight else 70.0,
-        activity_level=ActivityLevel.MODERATE,
+        # BUG-12 FIX: activity_level is saved by the goals page into
+        # notification_preferences.targets.activity_level (JSON). No DB column exists yet,
+        # so we read from that JSON key and map to the ActivityLevel enum.
+        activity_level=_ACTIVITY_MAP.get(
+            (user.notification_preferences or {}).get("targets", {}).get("activity_level", "moderate"),
+            ActivityLevel.MODERATE,
+        ),
         goal=user.goal_type or "maintenance",
         target_calories=float(user.daily_calorie_target) if user.daily_calorie_target else None,
     )
@@ -205,10 +220,15 @@ def generate_and_persist_recommendations(
                 )
             )
 
-    # Build 30-day history (excluding today)
+    # Build 30-day history (excluding today) over the COMPLETE date range.
+    # Previously we only included dates that had at least one data point,
+    # which created gaps in the timeline. These gaps broke the consecutive-sleep
+    # streak counter in trend_detection.py, preventing the sleep rule from firing.
+    # Now every day in the window is included; days with no data get an empty snapshot
+    # (total_sleep_hours=None, total_steps=None) which the trend detectors skip correctly.
     all_past_dates = sorted(
-        d for d in (set(by_date_vitals.keys()) | set(by_date_sleep.keys()) | set(by_date_meals.keys()))
-        if d < today
+        history_start + timedelta(days=i)
+        for i in range((today - history_start).days)
     )
 
     history_snapshots: list[DailySnapshot] = []
@@ -236,12 +256,8 @@ def generate_and_persist_recommendations(
     cooldown_rules: set[str] = set()
     now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     for r in recent_recs:
-        if r.rule_id:
-            # If still within expires_at or created within 1-3 days
-            if r.expires_at and r.expires_at > now_naive:
-                cooldown_rules.add(r.rule_id)
-            elif (now_naive - r.created_at).total_seconds() < 86400:  # 24h default cooldown
-                cooldown_rules.add(r.rule_id)
+        if r.rule_id and r.expires_at and r.expires_at > now_naive:
+            cooldown_rules.add(r.rule_id)
 
     # 5. Generate fresh recommendations
     todays_vitals = by_date_vitals.get(today, [])
