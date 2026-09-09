@@ -20,27 +20,63 @@ so there's no translation layer needed between the two modules.
 import json
 from functools import lru_cache
 
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+# ---------------------------------------------------------------------------
+# TensorFlow is intentionally NOT imported at module level.
+# Doing so would block the server from starting for 4-8 seconds while TF
+# initialises its C++ kernels and CUDA drivers — even when no GPU is present.
+#
+# Instead, TF is imported lazily inside _load_model(), which is called:
+#   a) By the background warmup task in main.py (after the server is ready)
+#   b) On the first real call to recognize_food() if warmup hasn't finished yet
+#
+# The _model_ready flag lets the /analyze endpoint return a friendly
+# "still warming up" message instead of making the user wait for a cold load.
+# ---------------------------------------------------------------------------
 
-from . import config
-from .nutrition_lookup import get_nutrition
-
-# Confidence below this threshold (55%) is treated as ambiguous and will not return a class name.
-CONFIDENCE_THRESHOLD = 0.55
-LOW_CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD
+import threading
+_model_ready = False
+_model_ready_lock = threading.Lock()
 
 
 @lru_cache(maxsize=1)
 def _load_model():
+    """Load the Keras model and class index map. Results are cached forever (lru_cache).
+    TF is imported here so it never blocks the server startup path."""
+    import numpy as np  # noqa: F401 — imported here to keep module imports fast
+    import tensorflow as tf
+    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input  # noqa: F401
+
+    from . import config
+
     model = tf.keras.models.load_model(config.MODEL_PATH)
     with open(config.CLASS_INDICES_PATH) as f:
         class_names = {int(k): v for k, v in json.load(f).items()}
+
+    # Mark the model as ready so the endpoint can serve without the warmup wait
+    global _model_ready
+    with _model_ready_lock:
+        _model_ready = True
+
     return model, class_names
 
 
+# Confidence below this threshold (55%) is treated as ambiguous — no TF dependency, safe at module level
+CONFIDENCE_THRESHOLD = 0.55
+
+
 def recognize_food(image_path: str) -> dict:
+    """Run the food recognition model on a saved image file.
+
+    All TensorFlow objects come from _load_model() which lazy-imports TF.
+    If called before the background warmup finishes, it will trigger the load
+    synchronously (first call takes ~10s; all subsequent calls are instant via lru_cache).
+    """
+    import numpy as np
+    import tensorflow as tf
+    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+    from . import config
+    from .nutrition_lookup import get_nutrition
+
     model, class_names = _load_model()
 
     img = tf.keras.utils.load_img(image_path, target_size=config.IMAGE_SIZE)

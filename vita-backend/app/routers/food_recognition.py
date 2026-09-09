@@ -98,6 +98,20 @@ class AnalyzeResult:
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
+@router.get("/model-status")
+async def get_model_status(current_user: User = Depends(get_current_user)):
+    """
+    Returns whether the food recognition AI model has finished loading.
+    The frontend polls this on the food-log page to show/hide a loading indicator.
+    Model loads in the background after server boot — usually ready within 15-30s.
+    """
+    from food_cv.inference import _model_ready
+    return {
+        "ready": _model_ready,
+        "message": "Model ready" if _model_ready else "AI model is warming up, please wait…",
+    }
+
+
 @router.post("/analyze")
 async def analyze_food_photo(
     file: UploadFile = File(..., description="Meal photo (JPEG / PNG / WebP, max 10 MB)"),
@@ -109,6 +123,19 @@ async def analyze_food_photo(
     Upload a photo → get back the recognised dish, estimated calories, macros, and image_url.
     Nothing is saved to the database yet — call POST /food/log to persist the meal.
     """
+    # Check if the AI model has finished loading in the background warmup task.
+    # If not ready yet, return a friendly 503 so the frontend can retry in a few seconds.
+    from food_cv.inference import _model_ready
+    if not _model_ready:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "The food recognition AI is still warming up. "
+                "Please wait a few seconds and try again."
+            ),
+            headers={"Retry-After": "5"},
+        )
+
     _validate_image(file)
     recognize_food = _load_recognizer()
 

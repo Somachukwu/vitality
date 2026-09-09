@@ -176,7 +176,8 @@ VITALS_RULES = [
         category=Category.ACTIVITY.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            0 < _snapshot(f).total_steps < 3500
+            _snapshot(f).total_steps is not None
+            and 0 < _snapshot(f).total_steps < 3500
         ),
         action=_rule_daily_low_steps_action,
         weight=58,
@@ -187,7 +188,8 @@ VITALS_RULES = [
         category=Category.ACTIVITY.value,
         tier=Tier.SUPPORTING_INSIGHT,
         condition=lambda f: (
-            _snapshot(f).total_steps >= 10000
+            _snapshot(f).total_steps is not None
+            and _snapshot(f).total_steps >= 10000
         ),
         action=_rule_step_milestone_action,
         weight=54,

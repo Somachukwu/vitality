@@ -397,6 +397,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
         rule_id: 'time.evening_deficit_lock',
       };
     }
+    if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.80) {
     if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.90) {
       const remaining = calorieTarget - consumedCals;
       return {
@@ -591,6 +592,7 @@ async function persistContextualInsight(card) {
   } else if (
     card.rule_id.startsWith('safety.') ||
     card.rule_id.startsWith('sleep.') ||
+    card.rule_id.startsWith('vitals.')
     card.rule_id.startsWith('vitals.') ||
     card.rule_id === 'time.morning_low_steps_sleep'
   ) {
