@@ -16,9 +16,7 @@ export function logout() {
 }
 
 export function requireAuth() {
-  // No automatic redirect; caller can handle missing token.
-  // Returns true if token exists, false otherwise.
-  return !!getToken();
+  if (!getToken()) window.location.href = 'login.html';
 }
 
 export async function loginApi(email, password) {

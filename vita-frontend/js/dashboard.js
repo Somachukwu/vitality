@@ -264,7 +264,9 @@ function renderRec(cardResult) {
       switcher.appendChild(btn);
     });
 
-    recCardEl.insertBefore(switcher, recCardEl.firstChild);
+    if (recCardEl) {
+      recCardEl.insertBefore(switcher, recCardEl.firstChild);
+    }
 
     function switchToIndex(idx) {
       activeIndex = idx;
@@ -397,7 +399,6 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
         rule_id: 'time.evening_deficit_lock',
       };
     }
-    if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.80) {
     if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.90) {
       const remaining = calorieTarget - consumedCals;
       return {
@@ -529,23 +530,35 @@ function renderRecFallback() {
 
 
 async function renderNutrition(meals, goal) {
-  const total  = meals.reduce((s, m) => s + m.totalCalories, 0);
-  const macros = meals.flatMap(m => m.detectedFoods).reduce(
+  const safeGoal = (goal && goal > 0) ? goal : 2200;
+  const safeMeals = Array.isArray(meals) ? meals : [];
+  const total  = safeMeals.reduce((s, m) => s + (m.totalCalories || 0), 0);
+  const macros = safeMeals.flatMap(m => m.detectedFoods || []).reduce(
     (acc, f) => { acc.carbs += f.carbs || 0; acc.protein += f.protein || 0; acc.fat += f.fat || 0; return acc; },
     { carbs: 0, protein: 0, fat: 0 }
   );
 
-  document.getElementById('cal-goal').textContent  = goal.toLocaleString();
-  countUp(document.getElementById('cal-eaten'), total, { decimals: 0 });
-  document.getElementById('meal-count').textContent = meals.length;
+  const calGoalEl = document.getElementById('cal-goal');
+  if (calGoalEl) calGoalEl.textContent = safeGoal.toLocaleString();
+
+  const calEatenEl = document.getElementById('cal-eaten');
+  if (calEatenEl) countUp(calEatenEl, total, { decimals: 0 });
+
+  const mealCountEl = document.getElementById('meal-count');
+  if (mealCountEl) mealCountEl.textContent = safeMeals.length;
 
   const ring  = document.getElementById('cal-ring');
-  const circ  = 2 * Math.PI * 52;
-  ring.style.strokeDashoffset = String(circ * (1 - Math.min(1, total / goal)));
+  if (ring) {
+    const circ  = 2 * Math.PI * 52;
+    ring.style.strokeDashoffset = String(circ * (1 - Math.min(1, total / safeGoal)));
+  }
 
   const ctx = document.getElementById('macros-chart');
+  if (!ctx) return;
   if (!(await waitForChart())) {
-    ctx.parentElement.innerHTML = '<div class="center muted text-sm">Macro chart unavailable.</div>';
+    if (ctx.parentElement) {
+      ctx.parentElement.innerHTML = '<div class="center muted text-sm">Macro chart unavailable.</div>';
+    }
     return;
   }
   if (macrosChart) macrosChart.destroy();
@@ -592,7 +605,6 @@ async function persistContextualInsight(card) {
   } else if (
     card.rule_id.startsWith('safety.') ||
     card.rule_id.startsWith('sleep.') ||
-    card.rule_id.startsWith('vitals.')
     card.rule_id.startsWith('vitals.') ||
     card.rule_id === 'time.morning_low_steps_sleep'
   ) {
@@ -737,8 +749,8 @@ async function syncNow() {
 
 
 
-document.getElementById('sync-btn').addEventListener('click', (e) => syncNow(e.currentTarget));
-document.getElementById('sync-btn-2').addEventListener('click', (e) => syncNow(e.currentTarget));
+document.getElementById('sync-btn')?.addEventListener('click', () => syncNow());
+document.getElementById('sync-btn-2')?.addEventListener('click', () => syncNow());
 
 // Poll vitals every 30s; also checks for midnight crossover to persist morning insight
 setInterval(async () => {
