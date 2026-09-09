@@ -6,10 +6,13 @@ and cooldown filters, and delivers a curated output:
   [Safety Alert (if active)] + [Top 1 Primary Action] + [Top 1 Supporting Insight]
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
 from .models import Priority, Recommendation, Tier
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -63,8 +66,9 @@ class RuleEngine:
                     rec.cooldown_days = rule.cooldown_days
                     score = float(rule.weight) * float(rec.confidence)
                     candidates.append((score, rec))
-            except Exception:
-                # Missing or malformed data in one rule should never crash the engine
+            except Exception as e:
+                # Log the exception for observability and continue to prevent crashing the engine
+                logger.warning("Error evaluating rule %s: %s", getattr(rule, 'rule_id', 'unknown'), e, exc_info=True)
                 continue
 
         # Sort all candidates by descending score

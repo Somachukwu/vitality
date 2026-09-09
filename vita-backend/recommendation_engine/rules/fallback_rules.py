@@ -64,17 +64,24 @@ def _rule_daily_wellness_focus_action(facts: dict[str, Any]) -> Recommendation:
 
 def _rule_macro_balance_insight_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
+    if s.meals_logged == 0:
+        msg = (
+            "No meals logged yet today. Aim to balance lean proteins, complex carbohydrates, "
+            "and healthy fats across your meals to support hormonal regulation and sustained physical energy."
+        )
+    else:
+        msg = (
+            f"Your logged intake today is {s.total_calories:.0f} kcal "
+            f"({s.total_protein_g:.0f}g protein, {s.total_carbs_g:.0f}g carbs, {s.total_fat_g:.0f}g fat). "
+            "Balancing all three macronutrients supports hormonal regulation and sustained physical energy."
+        )
     return Recommendation(
         category=Category.NUTRITION.value,
         priority=Priority.LOW,
         tier=Tier.SUPPORTING_INSIGHT,
         rule_id="lifestyle.macro_balance_insight",
         title="Balanced Energy Distribution",
-        message=(
-            f"Your logged intake today is {s.total_calories:.0f} kcal "
-            f"({s.total_protein_g:.0f}g protein, {s.total_carbs_g:.0f}g carbs, {s.total_fat_g:.0f}g fat). "
-            "Balancing all three macronutrients supports hormonal regulation and sustained physical energy."
-        ),
+        message=msg,
         evidence={"calories": s.total_calories, "protein_g": s.total_protein_g, "carbs_g": s.total_carbs_g, "fat_g": s.total_fat_g},
         action_data={"action_label": "View Nutrition", "route": "food-log.html"},
         cooldown_days=1,
@@ -89,7 +96,7 @@ FALLBACK_RULES = [
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: _profile(f).target_calories is None,
         action=_rule_set_targets_action,
-        weight=90,
+        weight=35,
         cooldown_days=1,
     ),
     Rule(

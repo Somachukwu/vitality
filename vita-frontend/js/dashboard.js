@@ -240,23 +240,24 @@ function renderRec(cardResult) {
     return;
   }
 
-  // If alternating between Critical Alert and Morning Greeting
-  if (cardResult.isAlternating && Array.isArray(cardResult.cards) && cardResult.cards.length > 1) {
-    const cards = cardResult.cards;
+  const cards = cardResult.cards || (Array.isArray(cardResult) ? cardResult : null);
+
+  // If multiple insights are available for today (e.g. Evening Step, Midday Meal, Morning Tip)
+  if (Array.isArray(cards) && cards.length > 1) {
     let activeIndex = 0;
 
     const recCardEl = document.getElementById('rec-card');
     const switcher = document.createElement('div');
     switcher.id = 'rec-switcher-controls';
-    switcher.className = 'row gap-xs mb-2 align-center';
+    switcher.className = 'row gap-xs mb-2 align-center flex-wrap';
 
     cards.forEach((c, idx) => {
       const btn = document.createElement('button');
       btn.id = `rec-tab-btn-${idx}`;
       btn.type = 'button';
       btn.className = `btn btn-xs`;
-      btn.style.cssText = `padding:0.22rem 0.65rem; border-radius:999px; font-size:0.75rem; transition:all 0.25s ease; ${idx === 0 ? 'background:rgba(255,255,255,0.3); color:#fff; font-weight:700; border:1px solid rgba(255,255,255,0.4);' : 'background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.75); border:1px solid transparent;'}`;
-      btn.innerHTML = c.tabLabel || (c.tier === 'safety' ? '🚨 Critical Alert' : '☀️ Morning Tip');
+      btn.style.cssText = `padding:0.25rem 0.75rem; border-radius:999px; font-size:0.75rem; font-weight:${idx === 0 ? '700' : '500'}; transition:all 0.25s ease; ${idx === 0 ? 'background:rgba(255,255,255,0.3); color:#fff; border:1px solid rgba(255,255,255,0.4);' : 'background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.75); border:1px solid transparent;'}`;
+      btn.innerHTML = c.tabLabel || c.badge || `Insight ${idx + 1}`;
       btn.onclick = (e) => {
         e.stopPropagation();
         switchToIndex(idx);
@@ -282,15 +283,9 @@ function renderRec(cardResult) {
       renderSingleRecContent(cards[idx]);
     }
 
-    renderSingleRecContent(cards[0]);
-
-    // Automatically alternate between Morning Greeting and Critical Alert every 6 seconds
-    recSwitchTimer = setInterval(() => {
-      const nextIdx = (activeIndex + 1) % cards.length;
-      switchToIndex(nextIdx);
-    }, 6000);
+    renderSingleRecContent(cardResult.activeCard || cards[0]);
   } else {
-    renderSingleRecContent(cardResult);
+    renderSingleRecContent(cardResult.activeCard || cardResult);
   }
 }
 
@@ -298,27 +293,18 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const now = new Date();
   const hour = now.getHours();
   const firstName = userProfile.name?.split(' ')[0] || 'there';
-  const goal = userProfile.goal_type || 'maintenance';
   const savedTargets = userProfile.notification_preferences?.targets || {};
   const targetSteps = savedTargets.target_steps || 10000;
-  const targetProtein = savedTargets.target_protein || Math.round((userProfile.weight || 70) * 1.4);
   const steps = vitalsData?.steps || 0;
-  const sleepHours = vitalsData?.sleepDurationMin ? Number((vitalsData.sleepDurationMin / 60).toFixed(1)) : 0;
   const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
-  const consumedProtein = Math.round((mealsData || []).flatMap(m => m.detectedFoods).reduce((sum, f) => sum + (f.protein || 0), 0));
   const mealsCount = (mealsData || []).length;
-
-  const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
   const today = todayISO();
   const joinDate = userProfile.created_at ? getLocalTimestampDate(userProfile.created_at) : '';
   const isJoinedToday = joinDate === today;
 
-  // 1. New user who joined TODAY and has not configured targets yet:
-  // Show default getting started message on Day 1
+  // 1. Day 1 new user who joined TODAY and has not configured targets yet
   if (isJoinedToday && !userProfile.daily_calorie_target) {
-    if (topRec?.rule_id === 'lifestyle.set_daily_targets') {
-      return topRec;
-    }
+    if (topRec?.rule_id === 'lifestyle.set_daily_targets') return topRec;
     return {
       badge: 'Getting Started 🚀',
       title: 'Set Your Daily Health Targets',
@@ -328,181 +314,224 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
     };
   }
 
-  // 2. Critical Safety Alert always overrides everything
-  if (isCritical) return topRec;
+  // ── BUILD THE 3 GUARANTEED DAILY INSIGHTS ──────────────────────────────────
+  // Card 1: Good Morning Vitality
+  const morningCard = getRotatingMorningInsight(firstName);
+  morningCard.tabLabel = '☀️ Morning Tip';
 
-  // 3. Latest-wins: if a recommendation was triggered/persisted today, show it.
-  //    The morning insight is persisted at 12:00 AM, so at the start of the day
-  //    topRec will already be the morning card. As the day progresses and new
-  //    insights are triggered (milestones, evening cards, backend rules), they are
-  //    persisted and become the new topRec on the next refresh cycle.
-  if (topRec && topRec.created_at && getLocalTimestampDate(topRec.created_at) === today) {
-    return topRec;
-  }
-
-
-  // 4. Multi-Target Milestone Celebrations (After meals or activity logged)
-  // A. Steps Target Milestone
-  if (targetSteps > 0 && steps >= targetSteps) {
-    return {
-      badge: 'Milestone Achieved ⭐',
-      title: 'Daily Step Goal Crushed! 🎉',
-      message: `Incredible work, ${firstName}! You’ve hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
-      action_data: { action_label: 'View Activity', route: 'vitals.html' },
-      rule_id: 'milestone.steps_met',
+  // Card 2: Midday Meal Insight (Prompt if 0 meals, or Congratulations if logged)
+  let mealCard;
+  if (mealsCount === 0) {
+    mealCard = {
+      badge: 'Fuel Check-In 🥗',
+      title: 'Midday Fuel Check-In',
+      message: `It’s past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
+      action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
+      rule_id: 'time.midday_meal_prompt',
+      tabLabel: '🥗 Meal Check',
+      tier: 'primary_action',
     };
-  }
-
-  // B. Protein Target Milestone
-  if (targetProtein > 0 && consumedProtein >= targetProtein && mealsCount >= 2) {
-    return {
-      badge: 'Macro Milestone 🥩',
-      title: 'Protein Target Achieved! 💪',
-      message: `Great work, ${firstName}! You logged ${consumedProtein}g of protein today, meeting your target for muscle preservation and cellular repair.`,
-      action_data: { action_label: 'View Food Log', route: 'food-log.html' },
-      rule_id: 'milestone.protein_met',
-    };
-  }
-
-  // C. Calorie Target Hit (Within ±100 kcal with >= 2 meals)
-  if (calorieTarget > 0 && mealsCount >= 2 && Math.abs(consumedCals - calorieTarget) <= 100) {
-    return {
+  } else if (calorieTarget > 0 && Math.abs(consumedCals - calorieTarget) <= 150) {
+    mealCard = {
       badge: 'Energy Balance 🎯',
       title: 'Calorie Target Hit! ⚖️',
       message: `Spot on, ${firstName}! You’ve hit your daily energy intake target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal) with precision.`,
       action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
       rule_id: 'milestone.calories_met',
+      tabLabel: '🎯 Calorie Hit',
+      tier: 'primary_action',
+    };
+  } else {
+    mealCard = {
+      badge: 'Nutrition On Track 🥗',
+      title: 'Meals Logged & On Track! 🎉',
+      message: `Great job staying on top of your nutrition today, ${firstName}! You've logged ${mealsCount} meal(s) totaling ${consumedCals.toLocaleString()} kcal. Consistent food logging powers metabolic health.`,
+      action_data: { action_label: 'View Food Log', route: 'food-log.html' },
+      rule_id: 'milestone.meals_logged_on_track',
+      tabLabel: '🥗 Meal Logged',
+      tier: 'primary_action',
     };
   }
 
-  // 5. Time-Specific Dynamic Afternoon & Evening Cards
-  // A. Evening Step Push (6:00 PM – 11:59 PM)
-  if (hour >= 18 && targetSteps > 0 && steps < targetSteps) {
-    const remaining = targetSteps - steps;
-    return {
+  // Card 3: Step Insight (Push if steps not completed, or Congratulations if completed)
+  let stepCard;
+  if (targetSteps > 0 && steps >= targetSteps) {
+    stepCard = {
+      badge: 'Milestone Achieved ⭐',
+      title: 'Daily Step Goal Crushed! 🎉',
+      message: `Incredible work, ${firstName}! You’ve hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
+      action_data: { action_label: 'View Activity', route: 'vitals.html' },
+      rule_id: 'milestone.steps_met',
+      tabLabel: '⭐ Steps Met',
+      tier: 'primary_action',
+    };
+  } else {
+    const remaining = Math.max(0, targetSteps - steps);
+    stepCard = {
       badge: 'Evening Boost 🚶‍♂️',
       title: 'Evening Step Boost',
       message: `You’re at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
       action_data: { action_label: 'Track Activity', route: 'vitals.html' },
       rule_id: 'time.evening_steps_push',
+      tabLabel: '🚶 Evening Steps',
+      tier: 'primary_action',
     };
   }
 
-  // B. Evening 7:00 PM Calorie Guidance (7:00 PM – 11:59 PM)
-  if (hour >= 19 && calorieTarget > 0) {
-    if (goal === 'weight_loss' && consumedCals >= calorieTarget * 0.95) {
-      return {
-        badge: 'Calorie Target 🎯',
-        title: 'Calorie Target Locked In',
-        message: `You've hit your fat loss energy target for today (${consumedCals} / ${calorieTarget} kcal). Close your eating window for the night to protect your calorie deficit and promote overnight fat oxidation.`,
-        action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
-        rule_id: 'time.evening_deficit_lock',
-      };
-    }
-    if (goal === 'weight_gain' && consumedCals < calorieTarget * 0.90) {
-      const remaining = calorieTarget - consumedCals;
-      return {
-        badge: 'Hypertrophy Fuel 🥩',
-        title: 'Fuel Your Muscle Growth',
-        message: `7 PM hypertrophy check: You're currently ${remaining} kcal below your surplus target. Add a nutrient-rich evening meal or protein shake to support overnight muscle protein synthesis.`,
-        action_data: { action_label: 'Log Evening Snack', route: 'food-log.html' },
-        rule_id: 'time.evening_surplus_needed',
-      };
-    }
-    if (goal === 'maintenance' && consumedCals < calorieTarget * 0.65) {
-      const remaining = calorieTarget - consumedCals;
-      return {
-        badge: 'Nutrition Reminder 🍽️',
-        title: 'Evening Nutrition Reminder',
-        message: `It's past 7 PM and you're running a significant calorie deficit (${remaining} kcal remaining). Log your dinner or an evening snack to support metabolism and recovery.`,
-        action_data: { action_label: 'Log Meal', route: 'food-log.html' },
-        rule_id: 'time.evening_general_deficit',
-      };
-    }
-    if (consumedCals > calorieTarget * 1.05) {
-      return {
-        badge: 'Energy Balance 🍵',
-        title: 'Daily Energy Target Reached',
-        message: `You've met your daily calorie target (${consumedCals} / ${calorieTarget} kcal). To prevent excess weight gain and aid digestive rest, switch to water or herbal tea for the evening.`,
-        action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
-        rule_id: 'time.evening_surplus_cap',
-      };
+  const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
+  const isHighAlert = topRec && (topRec.priority === 'high' || topRec.severity === 'warning');
+
+  // Check if topRec is a specialized AI / Vitals / Sleep / Correlation rule
+  const isSpecializedEngineRec = topRec && topRec.rule_id && 
+    !topRec.rule_id.startsWith('time.') &&
+    !topRec.rule_id.startsWith('lifestyle.set_daily_targets') &&
+    !topRec.rule_id.startsWith('lifestyle.daily_wellness_focus') &&
+    topRec.rule_id !== 'dynamic.morning_poetic';
+
+  if (topRec && isSpecializedEngineRec) {
+    if (!topRec.tabLabel) {
+      if (isCritical) {
+        topRec.tabLabel = '🚨 Safety Alert';
+      } else if (isHighAlert) {
+        topRec.tabLabel = '⚠️ Priority Insight';
+      } else if (topRec.rule_id.startsWith('vitals.') || topRec.rule_id.startsWith('sleep.')) {
+        topRec.tabLabel = '💤 Sleep & Vitals';
+      } else if (topRec.rule_id.startsWith('correlation.')) {
+        topRec.tabLabel = '⚡ Correlation';
+      } else if (topRec.rule_id.startsWith('activity.')) {
+        topRec.tabLabel = '👟 Activity Trend';
+      } else if (topRec.rule_id.startsWith('nutrition.')) {
+        topRec.tabLabel = '🥗 Nutrition';
+      } else {
+        topRec.tabLabel = '💡 AI Insight';
+      }
     }
   }
 
-  // C. Midday (12:00 PM – 2:59 PM) & Afternoon (3:00 PM – 5:59 PM) Meal Reminders (only if 0 meals logged)
-  if (hour >= 12 && hour < 15 && mealsCount === 0) {
-    return {
-      badge: 'Fuel Check-In 🥗',
-      title: 'Midday Fuel Check-In',
-      message: `It’s noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
-      action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
-      rule_id: 'time.midday_meal_prompt',
-    };
-  }
-  if (hour >= 15 && hour < 18 && mealsCount === 0) {
-    return {
-      badge: 'Energy Check-In 🕒',
-      title: 'Afternoon Energy Check-In',
-      message: `3:00 PM check-in: No meals logged so far today. Staying fueled prevents afternoon energy dips and evening overeating. Remember to log your meals!`,
-      action_data: { action_label: 'Log Meal', route: 'food-log.html' },
-      rule_id: 'time.afternoon_meal_prompt',
-    };
+  // Assemble active cards for today ordered by priority and time-of-day:
+  const cards = [];
+
+  // 1. Critical safety alerts and high priority health warnings always lead
+  if (topRec && (isCritical || isHighAlert) && isSpecializedEngineRec) {
+    cards.push(topRec);
   }
 
-  // D. Short Sleep (< 6.5 hours) Guidance (if sleep recorded)
-  if (sleepHours > 0 && sleepHours < 6.5 && hour < 14) {
-    if (goal === 'lose' || goal === 'weight_loss') {
-      return {
-        badge: 'Sleep & Metabolism 🌙',
-        title: 'Short Sleep & Appetite Regulation',
-        message: `You logged ${sleepHours} hours of sleep last night. In a calorie deficit, short sleep (<6.5h) elevates the hunger hormone ghrelin. Aim for 8.0-8.5 hours tonight to protect lean muscle and keep appetite stable.`,
-        action_data: { action_label: 'View Sleep', route: 'vitals.html' },
-        rule_id: 'sleep.short_loss',
-      };
-    } else if (goal === 'gain' || goal === 'weight_gain') {
-      return {
-        badge: 'Recovery Alert 🌙',
-        title: 'Short Sleep & Muscle Recovery',
-        message: `You logged ${sleepHours} hours of sleep last night. Over 70% of growth hormone release occurs during deep sleep. Prioritize 8.5-9.0 hours of restorative sleep tonight to maximize hypertrophy gains.`,
-        action_data: { action_label: 'View Sleep', route: 'vitals.html' },
-        rule_id: 'sleep.short_gain',
-      };
-    } else {
-      return {
-        badge: 'Restorative Rest 🌙',
-        title: 'Prioritize Restorative Sleep Tonight',
-        message: `You logged ${sleepHours} hours of sleep last night. Short sleep (<6.5h) elevates cortisol and slows recovery. Aim for an earlier, calming wind-down routine tonight.`,
-        action_data: { action_label: 'View Sleep', route: 'vitals.html' },
-        rule_id: 'sleep.short_wellness',
-      };
+  // 2. Time-of-day progression cards:
+  if (hour >= 18) {
+    // Evening (6:00 PM – 11:59 PM): Step card is default active, Meal and Morning accessible
+    cards.push(stepCard);
+    cards.push(mealCard);
+    cards.push(morningCard);
+  } else if (hour >= 12) {
+    // Midday (12:00 PM – 5:59 PM): Meal card is default active, Morning accessible
+    cards.push(mealCard);
+    cards.push(morningCard);
+  } else {
+    // Morning (12:00 AM – 11:59 AM): Morning vitality is default active
+    cards.push(morningCard);
+  }
+
+  // 3. If there is an active specialized AI engine recommendation (medium/low priority),
+  // add it as an accessible tab so the user can easily switch to it directly on the dashboard
+  if (topRec && !isCritical && !isHighAlert && isSpecializedEngineRec) {
+    const alreadyPresent = cards.some(c => c.rule_id === topRec.rule_id);
+    if (!alreadyPresent) {
+      cards.push(topRec);
     }
   }
 
-  // E. Low Steps → Sleep Advice (after 8PM, wearable synced but < 5,000 steps)
-  // steps > 0 ensures the wearable was synced today; we don't fire on "no data"
-  if (hour >= 20 && steps > 0 && steps < 5000) {
-    let sleepMsg = '';
-    let sleepBadge = 'Rest & Recovery 🌙';
-    if (goal === 'weight_loss') {
-      sleepMsg = `You logged ${steps.toLocaleString()} steps today — a gentle, low-movement day. In a calorie deficit, sleep becomes your primary recovery tool. Aim for <strong>8.5 hours</strong> tonight to protect lean muscle, regulate ghrelin, and keep your appetite in check tomorrow.`;
-    } else if (goal === 'weight_gain') {
-      sleepMsg = `You logged ${steps.toLocaleString()} steps today. A quieter movement day means tonight's sleep carries extra weight for your gains — over 70% of growth hormone is released during deep sleep. Target <strong>9 hours</strong> tonight to maximise the muscle protein synthesis window.`;
-      sleepBadge = 'Recovery Window 🌙';
-    } else {
-      sleepMsg = `You logged ${steps.toLocaleString()} steps today — a restful, gentle day. Let sleep do the heavy lifting: aim for <strong>8 hours</strong> tonight to reset your metabolism, restore energy, and set yourself up for a more active tomorrow.`;
+  return {
+    isMultiTab: cards.length > 1,
+    cards,
+    activeCard: cards[0],
+  };
+}
+
+// Persist the 3 core daily insights into the database as the day progresses
+async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData, mealsData, calorieTarget }) {
+  const now = new Date();
+  const hour = now.getHours();
+  const firstName = userName || userProfile.name?.split(' ')[0] || 'there';
+  const today = todayISO();
+
+  // 1. Morning Insight (Always persisted once per calendar day)
+  await checkAndPersistMorningInsight(firstName).catch(() => {});
+
+  // 2. Midday Meal Insight (Persisted once hour >= 12)
+  if (hour >= 12) {
+    const mealsCount = (mealsData || []).length;
+    const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
+    const mealStatus = mealsCount === 0 ? 'prompt' : (calorieTarget > 0 && Math.abs(consumedCals - calorieTarget) <= 150 ? 'hit' : 'logged');
+    const mealKey = `vita_meal_${today}_${mealStatus}`;
+    if (!localStorage.getItem(mealKey)) {
+      let mealCard;
+      if (mealsCount === 0) {
+        mealCard = {
+          badge: 'Fuel Check-In 🥗',
+          title: 'Midday Fuel Check-In',
+          message: `It’s past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
+          action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
+          rule_id: 'time.midday_meal_prompt',
+          tier: 'primary_action',
+        };
+      } else if (mealStatus === 'hit') {
+        mealCard = {
+          badge: 'Energy Balance 🎯',
+          title: 'Calorie Target Hit! ⚖️',
+          message: `Spot on, ${firstName}! You’ve hit your daily energy intake target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal) with precision.`,
+          action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
+          rule_id: 'milestone.calories_met',
+          tier: 'primary_action',
+        };
+      } else {
+        mealCard = {
+          badge: 'Nutrition On Track 🥗',
+          title: 'Meals Logged & On Track! 🎉',
+          message: `Great job staying on top of your nutrition today, ${firstName}! You've logged ${mealsCount} meal(s) totaling ${consumedCals.toLocaleString()} kcal. Consistent food logging powers metabolic health.`,
+          action_data: { action_label: 'View Food Log', route: 'food-log.html' },
+          rule_id: 'milestone.meals_logged_on_track',
+          tier: 'primary_action',
+        };
+      }
+      await persistContextualInsight(mealCard).catch(() => {});
+      localStorage.setItem(mealKey, '1');
     }
-    return {
-      badge: sleepBadge,
-      title: 'Prioritise Sleep Tonight',
-      message: sleepMsg,
-      action_data: { action_label: 'View Sleep Data', route: 'vitals.html' },
-      rule_id: 'time.morning_low_steps_sleep',
-    };
   }
 
-  // 6. Return most recent top recommendation from backend, or morning insight fallback
-  return topRec || getRotatingMorningInsight(firstName);
+  // 3. Evening Step Insight (Persisted once hour >= 18)
+  if (hour >= 18) {
+    const savedTargets = userProfile.notification_preferences?.targets || {};
+    const targetSteps = savedTargets.target_steps || 10000;
+    const steps = vitalsData?.steps || 0;
+    const isCompleted = targetSteps > 0 && steps >= targetSteps;
+    const stepStatus = isCompleted ? 'crushed' : 'push';
+    const stepKey = `vita_step_${today}_${stepStatus}`;
+    if (!localStorage.getItem(stepKey)) {
+      let stepCard;
+      if (isCompleted) {
+        stepCard = {
+          badge: 'Milestone Achieved ⭐',
+          title: 'Daily Step Goal Crushed! 🎉',
+          message: `Incredible work, ${firstName}! You’ve hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
+          action_data: { action_label: 'View Activity', route: 'vitals.html' },
+          rule_id: 'milestone.steps_met',
+          tier: 'primary_action',
+        };
+      } else {
+        const remaining = Math.max(0, targetSteps - steps);
+        stepCard = {
+          badge: 'Evening Boost 🚶‍♂️',
+          title: 'Evening Step Boost',
+          message: `You’re at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
+          action_data: { action_label: 'Track Activity', route: 'vitals.html' },
+          rule_id: 'time.evening_steps_push',
+          tier: 'primary_action',
+        };
+      }
+      await persistContextualInsight(stepCard).catch(() => {});
+      localStorage.setItem(stepKey, '1');
+    }
+  }
 }
 
 function renderRecFallback() {
@@ -695,6 +724,16 @@ async function loadAll() {
       topRec = await api.get('/recommendations/top');
     } catch { /* ignore */ }
 
+    // Ensure the 3 guaranteed daily insights (Morning, Midday Meal, Evening Steps)
+    // are evaluated and persisted to the database
+    await checkAndPersistDailyInsights({
+      userProfile: user,
+      userName,
+      vitalsData: adaptedVitals,
+      mealsData: todayMeals,
+      calorieTarget: calorieGoal,
+    }).catch(() => {});
+
     const smartCard = resolveContextualCard({
       userProfile: user,
       topRec,
@@ -705,12 +744,6 @@ async function loadAll() {
 
     if (smartCard) {
       renderRec(smartCard);
-      // Persist to database so it is recorded in Insights history
-      if (smartCard.isAlternating && Array.isArray(smartCard.cards)) {
-        smartCard.cards.forEach(c => persistContextualInsight(c));
-      } else {
-        persistContextualInsight(smartCard);
-      }
     } else {
       renderRecFallback();
     }
@@ -759,7 +792,13 @@ setInterval(async () => {
     renderVitals(adaptVitals(v));
     renderBmi(v.weight ?? user.weight, user.height);
   } catch { /* ignore */ }
-  // If midnight just rolled over, persist the morning insight for the new day
+  // Check for time slot crossovers (midnight morning, 12PM midday, 6PM evening)
   const firstName = user.name?.split(' ')[0] || 'there';
-  checkAndPersistMorningInsight(firstName).catch(() => {});
+  checkAndPersistDailyInsights({
+    userProfile: user,
+    userName: firstName,
+    vitalsData: null,
+    mealsData: null,
+    calorieTarget: user.daily_calorie_target || 2200,
+  }).catch(() => {});
 }, 30000);

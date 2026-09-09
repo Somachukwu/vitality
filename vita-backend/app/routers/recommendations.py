@@ -77,7 +77,19 @@ def get_recommendations(
     Returns all recommendations for the authenticated user, ordered newest first.
     Accepts optional ?days=N query param to limit history window (default: 30 days).
     """
-    cutoff_dt = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start_dt = datetime.combine(now_naive.date(), datetime.min.time())
+
+    # If no recommendations exist for today yet, automatically generate them
+    today_count = (
+        db.query(Recommendation)
+        .filter(Recommendation.user_id == current_user.id, Recommendation.created_at >= today_start_dt)
+        .count()
+    )
+    if today_count == 0:
+        generate_and_persist_recommendations(current_user.id, db)
+
+    cutoff_dt = now_naive - timedelta(days=days)
 
     return (
         db.query(Recommendation)

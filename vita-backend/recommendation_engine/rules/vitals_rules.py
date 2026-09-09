@@ -97,25 +97,34 @@ def _rule_high_stress_action(facts: dict[str, Any]) -> Recommendation:
 
 def _rule_daily_low_steps_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
+    steps = s.total_steps or 0
+    if steps == 0:
+        msg = (
+            "You haven't logged any steps yet today. "
+            "A brisk 20-30 minute walk or opting for stairs over elevators will help you close the gap toward your daily movement target."
+        )
+    else:
+        msg = (
+            f"You have logged {steps:,} steps today. "
+            "Taking a brief walk or opting for stairs over elevators will help you close the gap toward your daily movement target."
+        )
     return Recommendation(
         category=Category.ACTIVITY.value,
         priority=Priority.LOW,
         tier=Tier.PRIMARY_ACTION,
         rule_id="activity.daily_low_steps",
         title="Increase Daily Movement",
-        message=(
-            f"You have logged {s.total_steps:,} steps today. "
-            "Taking a brief walk or opting for stairs over elevators will help keep you on track for active recovery."
-        ),
+        message=msg,
         evidence={"total_steps": s.total_steps},
         action_data={"action_label": "Track Activity", "route": "vitals.html"},
-        cooldown_days=2,
+        cooldown_days=1,
         confidence=0.85,
     )
 
 
 def _rule_step_milestone_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
+    steps = s.total_steps or 10000
     return Recommendation(
         category=Category.ACTIVITY.value,
         priority=Priority.LOW,
@@ -123,12 +132,12 @@ def _rule_step_milestone_action(facts: dict[str, Any]) -> Recommendation:
         rule_id="activity.step_milestone",
         title="Daily Step Milestone Achieved",
         message=(
-            f"Excellent movement! You've logged {s.total_steps:,} steps today. "
+            f"Excellent movement! You've logged {steps:,} steps today. "
             "Consistent daily activity significantly supports cardiovascular health and metabolic rate."
         ),
         evidence={"total_steps": s.total_steps},
         action_data={"action_label": "View Activity", "route": "vitals.html"},
-        cooldown_days=2,
+        cooldown_days=1,
         confidence=0.9,
     )
 
@@ -176,12 +185,12 @@ VITALS_RULES = [
         category=Category.ACTIVITY.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            _snapshot(f).total_steps is not None
-            and 0 < _snapshot(f).total_steps < 3500
+            _snapshot(f).total_steps is None
+            or _snapshot(f).total_steps < 10000
         ),
         action=_rule_daily_low_steps_action,
         weight=58,
-        cooldown_days=2,
+        cooldown_days=1,
     ),
     Rule(
         rule_id="activity.step_milestone",
@@ -193,7 +202,7 @@ VITALS_RULES = [
         ),
         action=_rule_step_milestone_action,
         weight=54,
-        cooldown_days=2,
+        cooldown_days=1,
     ),
 ]
 

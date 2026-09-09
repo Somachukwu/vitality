@@ -188,9 +188,9 @@ def _rule_protein_quality_gap_action(facts: dict[str, Any]) -> Recommendation:
 # --- Rule 5: Weight-Goal Trend Mismatch (Supporting Insight) ---
 def _rule_weight_trend_mismatch_action(facts: dict[str, Any]) -> Recommendation:
     p = _profile(facts)
-    slope = facts.get("weight_slope_kg_week", 0.0)
-    balance = facts.get("avg_calorie_balance", 0.0)
-    goal = p.normalized_goal
+    slope = facts.get("weight_slope_kg_week") or 0.0
+    balance = facts.get("avg_calorie_balance") or 0.0
+    goal = p.normalized_goal if p else "maintain"
 
     if goal == "lose":
         title = "Weight Trend Above Target"
@@ -245,7 +245,7 @@ def _rule_elevated_resting_hr_action(facts: dict[str, Any]) -> Recommendation:
 
 # --- Supporting Insight: Multi-System Physiological Anomaly (Isolation Forest) ---
 def _rule_vitals_anomaly_cluster_action(facts: dict[str, Any]) -> Recommendation:
-    score = facts.get("anomaly_score", -0.25)
+    score = facts.get("anomaly_score") if facts.get("anomaly_score") is not None else -0.25
     s = _snapshot(facts)
     # Build a human-readable summary of which metrics contributed
     contributors = []
@@ -288,13 +288,11 @@ V1_RULES = [
             # Use snapshot.calorie_target (always computed via BMR fusion),
             # NOT profile.target_calories (only set when user enters manual override).
             # The old guard blocked this rule for all new users who hadn't configured a target.
-            _snapshot(f).calorie_target is not None
-            and (
-                _snapshot(f).meals_logged == 0
-                or (
-                    _snapshot(f).meals_logged in (1, 2)
-                    and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
-                )
+            _snapshot(f).meals_logged == 0
+            or (
+                _snapshot(f).calorie_target is not None
+                and _snapshot(f).meals_logged in (1, 2)
+                and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
             )
         ),
         action=_rule_incomplete_meal_logging_action,

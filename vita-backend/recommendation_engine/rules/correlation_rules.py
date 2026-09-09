@@ -53,6 +53,8 @@ def _rule_stress_and_surplus_action(facts: dict[str, Any]) -> Recommendation:
 
 def _rule_low_activity_high_calorie_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
+    steps = s.total_steps or 0
+    bal = s.calorie_balance or 0
     return Recommendation(
         category=Category.ACTIVITY.value,
         priority=Priority.MEDIUM,
@@ -60,7 +62,7 @@ def _rule_low_activity_high_calorie_action(facts: dict[str, Any]) -> Recommendat
         rule_id="correlation.low_activity_high_calorie",
         title="Calorie Surplus with Low Activity",
         message=(
-            f"Logged intake is running +{s.calorie_balance:.0f} kcal over target while daily steps are low ({s.total_steps:,} steps). "
+            f"Logged intake is running +{bal:.0f} kcal over target while daily steps are low ({steps:,} steps). "
             "A brisk 20-30 minute walk this evening will help rebalance energy expenditure."
         ),
         evidence={"total_steps": s.total_steps, "calorie_balance": s.calorie_balance},
@@ -104,7 +106,8 @@ CORRELATION_RULES = [
         category=Category.ACTIVITY.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            _snapshot(f).total_steps < 4500
+            _snapshot(f).total_steps is not None
+            and _snapshot(f).total_steps < 4500
             and _snapshot(f).calorie_balance is not None
             and _snapshot(f).calorie_balance > 250
         ),

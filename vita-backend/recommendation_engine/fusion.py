@@ -81,12 +81,16 @@ def build_daily_snapshot(
     spo2_values = [v.spo2_pct for v in vitals_list if v.spo2_pct is not None]
     weight_values = [v.weight_kg for v in vitals_list if v.weight_kg is not None]
 
-    # total_steps: None when no vitals at all (wearable not synced), 0 when synced but no steps
+    # total_steps: None when no vitals at all (wearable not synced), 0 when synced but no steps.
+    # Take the max non-zero aggregate value across daily syncs (aligning with vitals.py _DAILY_AGGREGATE_FIELDS)
+    # to avoid multiplying steps when multiple syncs occur on the same day.
     steps_total: Optional[int] = None
     if vitals_list:
-        steps_total = sum(v.steps or 0 for v in vitals_list)
+        step_readings = [v.steps for v in vitals_list if v.steps is not None]
+        steps_total = max(step_readings, default=None)
 
-    active_minutes_total = sum(v.active_minutes or 0 for v in vitals_list)
+    active_readings = [v.active_minutes for v in vitals_list if v.active_minutes is not None]
+    active_minutes_total = max(active_readings, default=0)
 
     # Resting HR: accurate 10th-percentile of all HR readings
     # Requires numpy for a correct percentile (manual index arithmetic was off)

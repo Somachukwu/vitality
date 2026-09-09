@@ -20,25 +20,27 @@ def _rule_calorie_surplus_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
     p = _profile(facts)
     goal = p.normalized_goal if p else "maintenance"
+    target = s.calorie_target or 2000.0
+    balance = s.calorie_balance or 0.0
 
     if goal == "lose":
         title = "Calorie Limit Reached for Fat Loss"
         msg = (
-            f"You've logged {s.total_calories:.0f} kcal, reaching your target of {s.calorie_target:.0f} kcal "
-            f"(+{s.calorie_balance:.0f} kcal over). To protect your fat loss deficit, avoid further caloric intake "
+            f"You've logged {s.total_calories:.0f} kcal, reaching your target of {target:.0f} kcal "
+            f"(+{balance:.0f} kcal over). To protect your fat loss deficit, avoid further caloric intake "
             "tonight and hydrate with water or herbal tea."
         )
     elif goal == "gain":
         title = "Calorie Surplus on Track"
         msg = (
-            f"You logged {s.total_calories:.0f} kcal (+{s.calorie_balance:.0f} kcal surplus). "
+            f"You logged {s.total_calories:.0f} kcal (+{balance:.0f} kcal surplus). "
             "You are providing your body with the energy needed to synthesize new muscle tissue. Great job staying consistent!"
         )
     else:
         title = "Calorie Surplus Today"
         msg = (
-            f"You logged {s.total_calories:.0f} kcal against a target of {s.calorie_target:.0f} kcal "
-            f"(+{s.calorie_balance:.0f} kcal over). A lighter dinner or an evening stroll will help keep your weekly energy balance aligned."
+            f"You logged {s.total_calories:.0f} kcal against a target of {target:.0f} kcal "
+            f"(+{balance:.0f} kcal over). A lighter dinner or an evening stroll will help keep your weekly energy balance aligned."
         )
 
     return Recommendation(
@@ -97,7 +99,7 @@ def _rule_calorie_deficit_moderate_action(facts: dict[str, Any]) -> Recommendati
 def _rule_protein_target_hit_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
     p = _profile(facts)
-    weight = p.weight_kg or 70.0
+    weight = (p.weight_kg if p and p.weight_kg and p.weight_kg > 0 else 70.0)
     return Recommendation(
         category=Category.NUTRITION.value,
         priority=Priority.LOW,
@@ -149,6 +151,7 @@ NUTRITION_RULES = [
         tier=Tier.SUPPORTING_INSIGHT,
         condition=lambda f: (
             _snapshot(f).meals_logged >= 2
+            and _profile(f) is not None
             and _snapshot(f).total_protein_g >= (_profile(f).weight_kg or 70.0) * 1.2
         ),
         action=_rule_protein_target_hit_action,

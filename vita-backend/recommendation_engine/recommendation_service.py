@@ -244,17 +244,22 @@ def generate_and_persist_recommendations(
         )
 
     # 4. Check active cooldowns from DB recommendations table
+    # Only recommendations from PREVIOUS days on multi-day cooldown suppress generation.
+    # Today's own same-day recommendations do NOT block intraday re-evaluations when user logs meals or steps.
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start_dt = datetime.combine(today, datetime.min.time())
+
     recent_recs = (
         db.query(RecommendationModel)
         .filter(
             RecommendationModel.user_id == user_id,
-            RecommendationModel.created_at >= datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7),
+            RecommendationModel.created_at < today_start_dt,
+            RecommendationModel.created_at >= now_naive - timedelta(days=7),
         )
         .all()
     )
 
     cooldown_rules: set[str] = set()
-    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     for r in recent_recs:
         if r.rule_id and r.expires_at and r.expires_at > now_naive:
             cooldown_rules.add(r.rule_id)
@@ -272,41 +277,91 @@ def generate_and_persist_recommendations(
         sleep_sessions=todays_sleep,
         history=history_snapshots,
         active_cooldown_rules=cooldown_rules,
-        limit_delivery=True,
+        limit_delivery=False,
     )
 
-    # 6. Map to database RecommendationModel and persist
-    db_records: list[RecommendationModel] = []
+    # Curate delivery: preserve any active Safety alerts, plus top Primary Action
+    # and top Supporting Insight per category (Nutrition, Activity, Vitals/Alert, Goal Progress)
+    # This guarantees the user has their meal insight and step insight generated without
+    # one category starving the other.
+    category_actions: dict[str, Recommendation] = {}
+    category_insights: dict[str, Recommendation] = {}
+    safety_alerts: list[Recommendation] = []
+
     for rec in generated:
-        expires_dt = now_naive + timedelta(days=rec.cooldown_days)
+        if rec.tier == Tier.SAFETY:
+            safety_alerts.append(rec)
+        elif rec.tier == Tier.PRIMARY_ACTION:
+            if rec.category not in category_actions:
+                category_actions[rec.category] = rec
+        elif rec.tier == Tier.SUPPORTING_INSIGHT:
+            if rec.category not in category_insights:
+                category_insights[rec.category] = rec
+
+    curated_to_persist = [
+        *safety_alerts,
+        *category_actions.values(),
+        *category_insights.values(),
+    ]
+
+    # 6. Map to database RecommendationModel and persist (or update today's live record)
+    db_records: list[RecommendationModel] = []
+    for rec in curated_to_persist:
+        # Daily and reminder rules (cooldown_days <= 1) expire at the end of the calendar day
+        # so they start fresh the next morning without multi-day suppression.
+        if rec.cooldown_days <= 1:
+            expires_dt = datetime.combine(today, datetime.max.time().replace(microsecond=0))
+        else:
+            expires_dt = datetime.combine(today + timedelta(days=rec.cooldown_days - 1), datetime.max.time().replace(microsecond=0))
+
         # Severity mapping
         severity_val = "info"
         if rec.priority.value in ("critical", "high"):
             severity_val = "critical" if rec.priority.value == "critical" else "warning"
 
-        db_rec = RecommendationModel(
-            user_id=user_id,
-            type=rec.category,
-            severity=severity_val,
-            tier=rec.tier.value,
-            rule_id=rec.rule_id,
-            title=rec.title,
-            message=rec.message,
-            evidence=rec.evidence,
-            action_data=rec.action_data,
-            is_read=False,
-            expires_at=expires_dt,
+        # Check if this rule_id was ALREADY generated today for this user
+        existing_today = (
+            db.query(RecommendationModel)
+            .filter(
+                RecommendationModel.user_id == user_id,
+                RecommendationModel.rule_id == rec.rule_id,
+                RecommendationModel.created_at >= today_start_dt,
+            )
+            .first()
         )
-        db.add(db_rec)
-        db_records.append(db_rec)
+        if existing_today:
+            # Update with latest intraday metrics/message rather than creating duplicate DB rows
+            existing_today.title = rec.title
+            existing_today.message = rec.message
+            existing_today.evidence = rec.evidence
+            existing_today.action_data = rec.action_data
+            existing_today.severity = severity_val
+            existing_today.expires_at = expires_dt
+            db_records.append(existing_today)
+        else:
+            db_rec = RecommendationModel(
+                user_id=user_id,
+                type=rec.category,
+                severity=severity_val,
+                tier=rec.tier.value,
+                rule_id=rec.rule_id,
+                title=rec.title,
+                message=rec.message,
+                evidence=rec.evidence,
+                action_data=rec.action_data,
+                is_read=False,
+                expires_at=expires_dt,
+                created_at=now_naive,
+            )
+            db.add(db_rec)
+            db_records.append(db_rec)
 
     if db_records:
         db.commit()
         for r in db_records:
             db.refresh(r)
     else:
-        # If no new records were inserted (e.g., today was already evaluated), return today's records
-        today_start_dt = datetime.combine(today, datetime.min.time())
+        # If no records were inserted/updated, return today's existing records
         db_records = (
             db.query(RecommendationModel)
             .filter(
