@@ -125,7 +125,7 @@ def ingest_vitals(
     return record
 
 
-def _auto_sync_if_needed(user_id: int, db: Session, minutes: int = 15) -> None:
+def _auto_sync_if_needed(user_id: int, db: Session, minutes: int = 15) -> Optional[GoogleHealthToken]:
     """Trigger Google Health sync if user has an active token and >15 min since last sync."""
     token_row = (
         db.query(GoogleHealthToken)
@@ -142,6 +142,7 @@ def _auto_sync_if_needed(user_id: int, db: Session, minutes: int = 15) -> None:
                 db.refresh(token_row)
             except Exception:
                 pass  # non-blocking fallback
+    return token_row
 
 
 def _build_latest_vitals(user: User, db: Session, target_date_str: Optional[str] = None) -> VitalsLatestOut:
@@ -164,7 +165,7 @@ def _build_latest_vitals(user: User, db: Session, target_date_str: Optional[str]
     today_end = today_start + timedelta(days=1)
 
     # Smart on-load auto-sync (if connected and >15 min since last sync)
-    _auto_sync_if_needed(user.id, db)
+    token_row = _auto_sync_if_needed(user.id, db)
 
     # Fetch recent records for point-in-time coalescing
     recent_records = (
