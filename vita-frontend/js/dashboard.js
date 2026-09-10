@@ -415,6 +415,8 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   // Critical Safety Alert always takes highest precedence if active
   if (isCritical && topRec) {
     topRec.tabLabel = '🚨 Critical Alert';
+  }
+
   // 1. Critical safety alerts and high priority health warnings always lead
   if (topRec && (isCritical || isHighAlert) && isSpecializedEngineRec) {
     cards.push(topRec);
