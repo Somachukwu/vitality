@@ -381,6 +381,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
   const isHighAlert = topRec && (topRec.priority === 'high' || topRec.severity === 'warning');
 
+  // Assemble active cards for today ordered by current time-of-day:
   // Check if topRec is a specialized AI / Vitals / Sleep / Correlation rule
   const isSpecializedEngineRec = topRec && topRec.rule_id && 
     !topRec.rule_id.startsWith('time.') &&
@@ -411,11 +412,15 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   // Assemble active cards for today ordered by priority and time-of-day:
   const cards = [];
 
+  // Critical Safety Alert always takes highest precedence if active
+  if (isCritical && topRec) {
+    topRec.tabLabel = '🚨 Critical Alert';
   // 1. Critical safety alerts and high priority health warnings always lead
   if (topRec && (isCritical || isHighAlert) && isSpecializedEngineRec) {
     cards.push(topRec);
   }
 
+  // Time-of-day progression:
   // 2. Time-of-day progression cards:
   if (hour >= 18) {
     // Evening (6:00 PM – 11:59 PM): Step card is default active, Meal and Morning accessible

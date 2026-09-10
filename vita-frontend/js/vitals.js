@@ -103,7 +103,18 @@ function makeChart(id, label, data, color) {
     type: 'line',
     data: {
       labels: data.map(d => d.label),
-      datasets: [{ label, data: data.map(d => d.value), borderColor: color, backgroundColor: grad, fill: true, tension: 0.35, borderWidth: 2, pointRadius: 3, pointHoverRadius: 5 }],
+      datasets: [{
+        label,
+        data: data.map(d => d.value),
+        borderColor: color,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.35,
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        spanGaps: true,
+      }],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
@@ -130,7 +141,8 @@ function makeContinuousChart(id, label, data, color, days) {
   grad.addColorStop(1, color + '00');
 
   const timeLabels = data.map(d => {
-    const dt = new Date(d.recorded_at);
+    const raw = d.recorded_at || '';
+    const dt = new Date(raw.endsWith('Z') ? raw : raw + 'Z');
     if (days <= 1) {
       return dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     } else if (days <= 7) {
@@ -286,39 +298,33 @@ async function render(days) {
       makeContinuousChart('c-hr', 'Heart rate', hrData, '#E53E3E', days);
     } else {
       // Fall back to daily summary if no continuous data exists yet
-      const hrDaily = history.filter(h => h.heart_rate != null).map(h => ({ label: dateLabel(h.date), value: h.heart_rate }));
+      const hrDaily = history.map(h => ({ label: dateLabel(h.date), value: h.heart_rate }));
       makeChart('c-hr', 'Heart rate', hrDaily, '#E53E3E');
     }
 
     if (spo2Data.length) {
       makeContinuousChart('c-spo2', 'SpO\u2082', spo2Data, '#00BFA5', days);
     } else {
-      const spo2Daily = history.filter(h => h.spo2 != null).map(h => ({ label: dateLabel(h.date), value: h.spo2 }));
+      const spo2Daily = history.map(h => ({ label: dateLabel(h.date), value: h.spo2 }));
       makeChart('c-spo2', 'SpO\u2082', spo2Daily, '#00BFA5');
     }
 
-    // ── Daily-summary charts (unchanged) ────────────────────────────────
-    const tempData = history.filter(h => h.temperature != null).map(h => ({ label: dateLabel(h.date), value: h.temperature }));
-    const wtData   = history.filter(h => h.weight != null).map(h => ({ label: dateLabel(h.date), value: h.weight }));
+    // ── Daily-summary charts ────────────────────────────────────────────
+    const tempData = history.map(h => ({ label: dateLabel(h.date), value: h.temperature }));
+    const wtData   = history.map(h => ({ label: dateLabel(h.date), value: h.weight }));
 
     makeChart('c-temp', 'Temperature', tempData, '#D97706');
     makeChart('c-wt',   'Weight',      wtData,   '#1B4332');
 
     // Sleep history & stages
-    const sleepHistory = history.filter(h => h.sleep_duration_min != null && h.sleep_duration_min > 0);
-    if (sleepHistory.length) {
-      makeSleepChart('c-sleep', sleepHistory);
-    } else {
-      const el = document.getElementById('c-sleep');
-      if (el) el.parentElement.innerHTML = '<div class="center muted text-sm">No sleep records for this period.</div>';
-    }
+    makeSleepChart('c-sleep', history);
 
-    // Daily aggregate bar charts
-    const stepsData  = history.filter(h => h.steps != null).map(h => ({ label: dateLabel(h.date), value: h.steps }));
-    const distData   = history.filter(h => h.distance_km != null).map(h => ({ label: dateLabel(h.date), value: h.distance_km }));
-    const calData    = history.filter(h => h.calories_burned != null).map(h => ({ label: dateLabel(h.date), value: h.calories_burned }));
-    const activeData = history.filter(h => h.active_minutes != null).map(h => ({ label: dateLabel(h.date), value: h.active_minutes }));
-    const floorsData = history.filter(h => h.floors != null).map(h => ({ label: dateLabel(h.date), value: h.floors }));
+    // Daily aggregate bar charts (full timeline with 0 for unrecorded days)
+    const stepsData  = history.map(h => ({ label: dateLabel(h.date), value: h.steps || 0 }));
+    const distData   = history.map(h => ({ label: dateLabel(h.date), value: h.distance_km || 0 }));
+    const calData    = history.map(h => ({ label: dateLabel(h.date), value: h.calories_burned || 0 }));
+    const activeData = history.map(h => ({ label: dateLabel(h.date), value: h.active_minutes || 0 }));
+    const floorsData = history.map(h => ({ label: dateLabel(h.date), value: h.floors || 0 }));
 
     makeBarChart('c-steps',  'Steps',          stepsData,  '#6366F1');
     makeBarChart('c-dist',   'Distance',       distData,   '#10B981');

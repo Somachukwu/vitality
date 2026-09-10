@@ -125,6 +125,25 @@ def ingest_vitals(
     return record
 
 
+def _auto_sync_if_needed(user_id: int, db: Session, minutes: int = 15) -> None:
+    """Trigger Google Health sync if user has an active token and >15 min since last sync."""
+    token_row = (
+        db.query(GoogleHealthToken)
+        .filter(GoogleHealthToken.user_id == user_id, GoogleHealthToken.is_active == True)
+        .first()
+    )
+    if token_row:
+        now_utc = datetime.now(timezone.utc)
+        last_sync = token_row.last_synced_at
+        if last_sync is None or last_sync < now_utc.replace(tzinfo=None) - timedelta(minutes=minutes):
+            try:
+                from app.services.google_health_service import sync_google_health
+                sync_google_health(user_id=user_id, db=db, hours_back=24)
+                db.refresh(token_row)
+            except Exception:
+                pass  # non-blocking fallback
+
+
 def _build_latest_vitals(user: User, db: Session, target_date_str: Optional[str] = None) -> VitalsLatestOut:
     """Build the latest vitals snapshot with proper today-only daily metrics."""
     if target_date_str:
@@ -145,21 +164,7 @@ def _build_latest_vitals(user: User, db: Session, target_date_str: Optional[str]
     today_end = today_start + timedelta(days=1)
 
     # Smart on-load auto-sync (if connected and >15 min since last sync)
-    token_row = (
-        db.query(GoogleHealthToken)
-        .filter(GoogleHealthToken.user_id == user.id, GoogleHealthToken.is_active == True)
-        .first()
-    )
-    if token_row:
-        now_utc = datetime.now(timezone.utc)
-        last_sync = token_row.last_synced_at
-        if last_sync is None or last_sync < now_utc.replace(tzinfo=None) - timedelta(minutes=15):
-            try:
-                from app.services.google_health_service import sync_google_health
-                sync_google_health(user_id=user.id, db=db, hours_back=24)
-                db.refresh(token_row)
-            except Exception:
-                pass  # non-blocking fallback
+    _auto_sync_if_needed(user.id, db)
 
     # Fetch recent records for point-in-time coalescing
     recent_records = (
@@ -255,13 +260,18 @@ def get_vitals_history(
     db: Session = Depends(get_db),
 ):
     """Return vitals and sleep history grouped by calendar date."""
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    _auto_sync_if_needed(current_user.id, db)
+
+    days = max(1, days)
+    today = datetime.now(timezone.utc).date()
+    start_date = today - timedelta(days=days - 1)
+    start_dt = datetime.combine(start_date, datetime.min.time())
 
     records = (
         db.query(Vitals)
         .filter(
             Vitals.user_id == current_user.id,
-            Vitals.recorded_at >= since,
+            Vitals.recorded_at >= start_dt,
         )
         .order_by(Vitals.recorded_at.asc())
         .all()
@@ -271,7 +281,7 @@ def get_vitals_history(
         db.query(SleepSession)
         .filter(
             SleepSession.user_id == current_user.id,
-            SleepSession.sleep_date >= since.date(),
+            SleepSession.sleep_date >= start_date,
         )
         .order_by(SleepSession.sleep_date.asc())
         .all()
@@ -284,10 +294,15 @@ def get_vitals_history(
         d = rec.recorded_at.date()
         by_date.setdefault(d, []).append(rec)
 
-    all_dates = set(by_date.keys()) | set(sleep_by_date.keys())
+    calendar_dates = [start_date + timedelta(days=i) for i in range(days)]
+    all_dates = sorted(
+        set(calendar_dates)
+        | {d for d in by_date.keys() if d >= start_date}
+        | {d for d in sleep_by_date.keys() if d >= start_date}
+    )
     summaries = []
 
-    for d in sorted(all_dates):
+    for d in all_dates:
         recs = by_date.get(d, [])
 
         # Daily aggregates: take the MAX non-zero value across all sources
@@ -358,7 +373,12 @@ def get_vitals_continuous(
     Unlike /history which groups by day, this endpoint returns every recorded
     data point so the frontend can plot high-resolution time-series charts.
     """
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    if days <= 1:
+        since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
+    else:
+        today = datetime.now(timezone.utc).date()
+        start_date = today - timedelta(days=max(1, days) - 1)
+        since = datetime.combine(start_date, datetime.min.time())
 
     records = (
         db.query(
@@ -380,7 +400,7 @@ def get_vitals_continuous(
 
     return [
         VitalsContinuousPoint(
-            recorded_at=r.recorded_at,
+            recorded_at=r.recorded_at.replace(tzinfo=timezone.utc) if r.recorded_at.tzinfo is None else r.recorded_at,
             heart_rate=r.heart_rate,
             spo2=r.spo2,
         )

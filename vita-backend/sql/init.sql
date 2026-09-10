@@ -175,7 +175,7 @@ SELECT * FROM google_health_tokens;
 
 SELECT * FROM sleep_sessions;
 
-Select * from vitals;
+Select * from meals;
 show tables;
 
 SELECT * FROM meals
