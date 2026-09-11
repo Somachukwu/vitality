@@ -33,6 +33,8 @@ try {
 
 
 let macrosChart = null;
+let _lastMeals = []; // cache latest today's meals for the 30s poll
+
 
 // Map snake_case API response to camelCase expected by render functions
 function adaptVitals(v) {
@@ -319,26 +321,43 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const morningCard = getRotatingMorningInsight(firstName);
   morningCard.tabLabel = '☀️ Morning Tip';
 
-  // Card 2: Midday Meal Insight (Prompt if 0 meals, or Congratulations if logged)
+  // Card 2: Meal / Calorie Insight
+  // Rules:
+  //   - If calorie target is already met → celebrate (any time of day)
+  //   - Else if it's past noon and no meals logged → midday "no meal" prompt
+  //   - Else if it's past 7 PM and calories < target → evening calorie reminder
+  //   - Else (meals logged, target not met, before 7 PM) → on-track acknowledgement
+  const calorieMet = calorieTarget > 0 && consumedCals >= calorieTarget;
   let mealCard;
-  if (mealsCount === 0) {
+  if (calorieMet) {
+    mealCard = {
+      badge: 'Energy Balance 🎯',
+      title: 'Calorie Target Crushed! 🎉',
+      message: `You did it, ${firstName}! You've reached your daily calorie target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal). Keep fuelling your body well — great nutrition is the foundation of great health!`,
+      action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
+      rule_id: 'milestone.calories_met',
+      tabLabel: '🎯 Calorie Hit',
+      tier: 'primary_action',
+    };
+  } else if (mealsCount === 0 && hour >= 12) {
     mealCard = {
       badge: 'Fuel Check-In 🥗',
       title: 'Midday Fuel Check-In',
-      message: `It’s past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
+      message: `It's past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
       action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
       rule_id: 'time.midday_meal_prompt',
       tabLabel: '🥗 Meal Check',
       tier: 'primary_action',
     };
-  } else if (calorieTarget > 0 && Math.abs(consumedCals - calorieTarget) <= 150) {
+  } else if (hour >= 19 && calorieTarget > 0 && consumedCals < calorieTarget) {
+    const remaining = calorieTarget - consumedCals;
     mealCard = {
-      badge: 'Energy Balance 🎯',
-      title: 'Calorie Target Hit! ⚖️',
-      message: `Spot on, ${firstName}! You’ve hit your daily energy intake target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal) with precision.`,
-      action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
-      rule_id: 'milestone.calories_met',
-      tabLabel: '🎯 Calorie Hit',
+      badge: 'Calorie Goal 🌙',
+      title: 'Evening Calorie Check-In',
+      message: `You're ${remaining.toLocaleString()} kcal away from your daily target, ${firstName}. Consider logging a balanced dinner or snack to round out your nutrition for the day (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal).`,
+      action_data: { action_label: 'Log Meal', route: 'food-log.html' },
+      rule_id: 'time.evening_calorie_push',
+      tabLabel: '🌙 Cal Reminder',
       tier: 'primary_action',
     };
   } else {
@@ -464,44 +483,56 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
   // 1. Morning Insight (Always persisted once per calendar day)
   await checkAndPersistMorningInsight(firstName).catch(() => {});
 
-  // 2. Midday Meal Insight (Persisted once hour >= 12)
-  if (hour >= 12) {
-    const mealsCount = (mealsData || []).length;
-    const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
-    const mealStatus = mealsCount === 0 ? 'prompt' : (calorieTarget > 0 && Math.abs(consumedCals - calorieTarget) <= 150 ? 'hit' : 'logged');
-    const mealKey = `vita_meal_${today}_${mealStatus}`;
-    if (!localStorage.getItem(mealKey)) {
-      let mealCard;
-      if (mealsCount === 0) {
-        mealCard = {
-          badge: 'Fuel Check-In 🥗',
-          title: 'Midday Fuel Check-In',
-          message: `It’s past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
-          action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
-          rule_id: 'time.midday_meal_prompt',
-          tier: 'primary_action',
-        };
-      } else if (mealStatus === 'hit') {
-        mealCard = {
-          badge: 'Energy Balance 🎯',
-          title: 'Calorie Target Hit! ⚖️',
-          message: `Spot on, ${firstName}! You’ve hit your daily energy intake target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal) with precision.`,
-          action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
-          rule_id: 'milestone.calories_met',
-          tier: 'primary_action',
-        };
-      } else {
-        mealCard = {
-          badge: 'Nutrition On Track 🥗',
-          title: 'Meals Logged & On Track! 🎉',
-          message: `Great job staying on top of your nutrition today, ${firstName}! You've logged ${mealsCount} meal(s) totaling ${consumedCals.toLocaleString()} kcal. Consistent food logging powers metabolic health.`,
-          action_data: { action_label: 'View Food Log', route: 'food-log.html' },
-          rule_id: 'milestone.meals_logged_on_track',
-          tier: 'primary_action',
-        };
-      }
+  // 2a. Calorie Target Celebration — fires IMMEDIATELY whenever target is first crossed (any time)
+  const mealsCount = (mealsData || []).length;
+  const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
+  const calorieMet = calorieTarget > 0 && consumedCals >= calorieTarget;
+  const calCrushedKey = `vita_cal_${today}_crushed`;
+  if (calorieMet && !localStorage.getItem(calCrushedKey)) {
+    const calCard = {
+      badge: 'Energy Balance 🎯',
+      title: 'Calorie Target Crushed! 🎉',
+      message: `You did it, ${firstName}! You've reached your daily calorie target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal). Keep fuelling your body well — great nutrition is the foundation of great health!`,
+      action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
+      rule_id: 'milestone.calories_met',
+      tier: 'primary_action',
+    };
+    await persistContextualInsight(calCard).catch(() => {});
+    localStorage.setItem(calCrushedKey, '1');
+  }
+
+  // 2b. Midday no-meal prompt — only fires if past noon AND no meals have been logged
+  if (hour >= 12 && mealsCount === 0) {
+    const midnoonKey = `vita_meal_${today}_prompt`;
+    if (!localStorage.getItem(midnoonKey)) {
+      const mealCard = {
+        badge: 'Fuel Check-In 🥗',
+        title: 'Midday Fuel Check-In',
+        message: `It's past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
+        action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
+        rule_id: 'time.midday_meal_prompt',
+        tier: 'primary_action',
+      };
       await persistContextualInsight(mealCard).catch(() => {});
-      localStorage.setItem(mealKey, '1');
+      localStorage.setItem(midnoonKey, '1');
+    }
+  }
+
+  // 2c. Evening calorie reminder — fires at 7 PM if target still not met
+  if (hour >= 19 && calorieTarget > 0 && !calorieMet) {
+    const calPushKey = `vita_cal_${today}_evening_push`;
+    if (!localStorage.getItem(calPushKey)) {
+      const remaining = calorieTarget - consumedCals;
+      const calReminderCard = {
+        badge: 'Calorie Goal 🌙',
+        title: 'Evening Calorie Check-In',
+        message: `You're ${remaining.toLocaleString()} kcal away from your daily target, ${firstName}. Consider logging a balanced dinner or snack to round out your nutrition for the day (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal).`,
+        action_data: { action_label: 'Log Meal', route: 'food-log.html' },
+        rule_id: 'time.evening_calorie_push',
+        tier: 'primary_action',
+      };
+      await persistContextualInsight(calReminderCard).catch(() => {});
+      localStorage.setItem(calPushKey, '1');
     }
   }
 
@@ -519,7 +550,7 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
         stepCard = {
           badge: 'Milestone Achieved ⭐',
           title: 'Daily Step Goal Crushed! 🎉',
-          message: `Incredible work, ${firstName}! You’ve hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
+          message: `Incredible work, ${firstName}! You've hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
           action_data: { action_label: 'View Activity', route: 'vitals.html' },
           rule_id: 'milestone.steps_met',
           tier: 'primary_action',
@@ -529,7 +560,7 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
         stepCard = {
           badge: 'Evening Boost 🚶‍♂️',
           title: 'Evening Step Boost',
-          message: `You’re at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
+          message: `You're at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
           action_data: { action_label: 'Track Activity', route: 'vitals.html' },
           rule_id: 'time.evening_steps_push',
           tier: 'primary_action',
@@ -540,6 +571,7 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
     }
   }
 }
+
 
 function renderRecFallback() {
   const textEl = document.getElementById('rec-text');
@@ -717,6 +749,7 @@ async function loadAll() {
   try {
     const rawMeals = await api.get('/meals/');
     todayMeals = rawMeals.filter(m => getLocalTimestampDate(m.logged_at) === today).map(adaptMeal);
+    _lastMeals = todayMeals; // keep a fresh copy for the 30s poll
     await renderNutrition(todayMeals, calorieGoal);
     renderRecentMeals(todayMeals);
   } catch {
@@ -799,13 +832,14 @@ setInterval(async () => {
     renderVitals(adaptVitals(v));
     renderBmi(v.weight ?? user.weight, user.height);
   } catch { /* ignore */ }
-  // Check for time slot crossovers (midnight morning, 12PM midday, 6PM evening)
+  // Check for time slot crossovers and calorie milestone (uses _lastMeals for live calorie total)
   const firstName = user.name?.split(' ')[0] || 'there';
   checkAndPersistDailyInsights({
     userProfile: user,
     userName: firstName,
     vitalsData: null,
-    mealsData: null,
+    mealsData: _lastMeals,
     calorieTarget: user.daily_calorie_target || 2200,
   }).catch(() => {});
 }, 30000);
+
