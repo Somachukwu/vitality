@@ -207,12 +207,18 @@ app.include_router(google_health.router, prefix="/api")
 # Serve uploaded meal images as static files at /uploads/meals/<filename>
 app.mount("/uploads", StaticFiles(directory=str(settings.uploads_dir)), name="uploads")
 
-# Serve on-device AI models if hosted with backend
+# Serve on-device AI models if hosted with backend with aggressive immutable caching
+class CachedStaticFiles(StaticFiles):
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
 models_dir = Path(__file__).resolve().parent.parent.parent / "vita-frontend" / "models"
 if not models_dir.exists():
     models_dir = Path(__file__).resolve().parent.parent / "models"
 if models_dir.exists():
-    app.mount("/models", StaticFiles(directory=str(models_dir)), name="models")
+    app.mount("/models", CachedStaticFiles(directory=str(models_dir)), name="models")
 
 
 @app.get("/api/health")

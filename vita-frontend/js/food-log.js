@@ -72,6 +72,108 @@ function getDishNutrition(name) {
 let ortSession = null;
 let modelLoadingPromise = null;
 
+const MODEL_CACHE_KEY = 'vita_food_model_v2';
+const MODEL_IDB_STORE = 'models';
+const MODEL_IDB_NAME = 'vita_ai_cache';
+
+function openModelDatabase() {
+  return new Promise((resolve) => {
+    if (!window.indexedDB) return resolve(null);
+    try {
+      const req = indexedDB.open(MODEL_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(MODEL_IDB_STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+async function getModelFromIndexedDB() {
+  try {
+    const db = await openModelDatabase();
+    if (!db) return null;
+    return new Promise((resolve) => {
+      const tx = db.transaction(MODEL_IDB_STORE, 'readonly');
+      const store = tx.objectStore(MODEL_IDB_STORE);
+      const req = store.get(MODEL_CACHE_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
+async function saveModelToIndexedDB(buffer) {
+  try {
+    const db = await openModelDatabase();
+    if (!db) return;
+    const tx = db.transaction(MODEL_IDB_STORE, 'readwrite');
+    const store = tx.objectStore(MODEL_IDB_STORE);
+    store.put(buffer, MODEL_CACHE_KEY);
+  } catch (_) {}
+}
+
+async function getCachedModelBytes(onProgress) {
+  const modelUrl = new URL('models/food_classifier/food_classifier.onnx', window.location.href).href;
+
+  // 1. Try CacheStorage (standard browser persistent disk cache)
+  if ('caches' in window) {
+    try {
+      const cache = await caches.open(MODEL_IDB_NAME);
+      const cached = await cache.match(modelUrl);
+      if (cached) {
+        console.log('[AI Cache] Model loaded instantly from local disk CacheStorage (0 KB downloaded).');
+        const buf = await cached.arrayBuffer();
+        if (buf && buf.byteLength > 10000) return buf;
+      }
+    } catch (e) {
+      console.warn('[AI Cache] CacheStorage read error:', e);
+    }
+  }
+
+  // 2. Try IndexedDB
+  const idbBuf = await getModelFromIndexedDB();
+  if (idbBuf && idbBuf.byteLength > 10000) {
+    console.log('[AI Cache] Model loaded instantly from IndexedDB (0 KB downloaded).');
+    return idbBuf;
+  }
+
+  // 3. Not cached locally: Download ONCE from network (2.8 MB)
+  console.log('[AI Cache] Model not in local storage. Downloading once for offline use (2.8 MB)...');
+  if (onProgress) onProgress('Saving vision scanner for offline use (downloading once)…');
+
+  const res = await fetch(modelUrl);
+  if (!res.ok) throw new Error(`Failed to download vision model (HTTP ${res.status})`);
+  const buffer = await res.arrayBuffer();
+
+  // Save to CacheStorage for all future reloads
+  if ('caches' in window) {
+    try {
+      const cache = await caches.open(MODEL_IDB_NAME);
+      await cache.put(modelUrl, new Response(buffer.slice(0), {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Cache-Control': 'public, max-age=31536000, immutable'
+        }
+      }));
+      console.log('[AI Cache] Stored model permanently in CacheStorage.');
+    } catch (e) {
+      console.warn('[AI Cache] CacheStorage save error:', e);
+    }
+  }
+
+  // Also save to IndexedDB as double redundancy
+  await saveModelToIndexedDB(buffer.slice(0));
+  console.log('[AI Cache] Stored model permanently in IndexedDB.');
+
+  return buffer;
+}
+
 async function initOnDeviceModel() {
   if (ortSession) return ortSession;
   if (modelLoadingPromise) return modelLoadingPromise;
@@ -84,23 +186,28 @@ async function initOnDeviceModel() {
     try {
       if (ort.env && ort.env.wasm) {
         ort.env.wasm.numThreads = 1;
-        // Critical for mobile: Explicitly point to CDN for wasm binaries to prevent 404
         ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
         ort.env.wasm.proxy = false;
       }
-      const modelUrl = new URL('models/food_classifier/food_classifier.onnx', window.location.href).href;
+
+      // Fetch or load from persistent mobile disk cache (0 KB on subsequent visits)
+      const modelBuffer = await getCachedModelBytes((msg) => {
+        const sub = document.getElementById('overlay-sub');
+        if (sub) sub.textContent = msg;
+      });
+      const modelBytes = new Uint8Array(modelBuffer);
 
       // Use 'wasm' provider which is universally supported on all iOS and Android devices
       try {
-        ortSession = await ort.InferenceSession.create(modelUrl, {
+        ortSession = await ort.InferenceSession.create(modelBytes, {
           executionProviders: ['wasm']
         });
       } catch (wasmErr) {
         console.warn('Wasm provider init error, falling back to default:', wasmErr);
-        ortSession = await ort.InferenceSession.create(modelUrl);
+        ortSession = await ort.InferenceSession.create(modelBytes);
       }
 
-      console.log('On-device food recognition model loaded successfully.');
+      console.log('On-device food recognition model ready.');
       return ortSession;
     } catch (err) {
       console.error('Could not load on-device ONNX model:', err);
