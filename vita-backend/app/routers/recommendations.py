@@ -39,13 +39,19 @@ def create_or_log_recommendation(
             .count()
         )
         if today_meals_count > 0:
-            # User has already logged meal(s) today! Purge any stale midday prompts.
-            db.query(Recommendation).filter(
-                Recommendation.user_id == current_user.id,
-                Recommendation.rule_id == "time.midday_meal_prompt",
-                Recommendation.created_at >= today_start,
-            ).delete(synchronize_session=False)
-            db.commit()
+            # User has already logged meal(s) today! Skip creating new prompts.
+            # Do NOT delete historical prompt if it was legitimately triggered earlier today.
+            existing = (
+                db.query(Recommendation)
+                .filter(
+                    Recommendation.user_id == current_user.id,
+                    Recommendation.rule_id == "time.midday_meal_prompt",
+                    Recommendation.created_at >= today_start,
+                )
+                .first()
+            )
+            if existing:
+                return existing
 
             latest = (
                 db.query(Recommendation)
@@ -88,6 +94,14 @@ def create_or_log_recommendation(
             db.commit()
             db.refresh(existing)
             return existing
+
+    # Once ANY new insight triggers, permanently retire the first-time user onboarding insight
+    if payload.rule_id != "lifestyle.set_daily_targets":
+        db.query(Recommendation).filter(
+            Recommendation.user_id == current_user.id,
+            Recommendation.rule_id == "lifestyle.set_daily_targets",
+            Recommendation.is_read == False,
+        ).update({"is_read": True}, synchronize_session=False)
 
     rec = Recommendation(
         user_id=current_user.id,
@@ -150,18 +164,18 @@ def get_top_recommendation(
     db: Session = Depends(get_db),
 ):
     """
-    Returns the single most critical active insight for the dashboard.
+    Returns the single active insight for the dashboard.
     Precedence:
-      1. Active unread Safety Alert from today or past 48 hours
-      2. Today's Primary Action
-      3. Today's Supporting Insight
-      4. Most recently created recommendation
+      1. Active unread Safety Alert (pinned until read/acknowledged)
+      2. Most recently triggered insight for today (latest insight replaces previous ones)
+      3. Fallback: Good Morning insight / daily wellness insight
+      4. First-time user onboarding (retired permanently once any other insight triggers)
     """
     now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     today_start = now_naive.date()
     today_start_dt = datetime.combine(today_start, datetime.min.time())
 
-    # 1. Check for any unread Safety Alert in the past 48 hours (including yesterday)
+    # 1. Pinned Critical Alert: Check for any unread Safety Alert in the past 48 hours
     recent_safety = (
         db.query(Recommendation)
         .filter(
@@ -176,6 +190,7 @@ def get_top_recommendation(
     if recent_safety:
         return recent_safety
 
+    # 2. Today's Insights (Newest first)
     today_recs = (
         db.query(Recommendation)
         .filter(Recommendation.user_id == current_user.id, Recommendation.created_at >= today_start_dt)
@@ -192,31 +207,55 @@ def get_top_recommendation(
     if today_meals_count > 0:
         today_recs = [r for r in today_recs if r.rule_id != "time.midday_meal_prompt"]
 
+    # If any regular insight exists today, permanently retire the new user onboarding insight
+    if any(r.rule_id != "lifestyle.set_daily_targets" for r in today_recs):
+        today_recs = [r for r in today_recs if r.rule_id != "lifestyle.set_daily_targets"]
+
     if not today_recs:
+        # Check if brand-new user with zero prior insights who needs target configuration
+        total_history_count = (
+            db.query(Recommendation)
+            .filter(
+                Recommendation.user_id == current_user.id,
+                Recommendation.rule_id != "lifestyle.set_daily_targets",
+            )
+            .count()
+        )
+        has_targets = current_user.daily_calorie_target is not None
+        if total_history_count == 0 and not has_targets:
+            # Check if set_daily_targets is unread and not dismissed
+            onboarding_rec = (
+                db.query(Recommendation)
+                .filter(
+                    Recommendation.user_id == current_user.id,
+                    Recommendation.rule_id == "lifestyle.set_daily_targets",
+                    Recommendation.is_read == False,
+                )
+                .first()
+            )
+            if onboarding_rec:
+                return onboarding_rec
+
+        # Otherwise synthesize today's recommendations
         today_recs = generate_and_persist_recommendations(current_user.id, db)
         if today_meals_count > 0 and today_recs:
             today_recs = [r for r in today_recs if r.rule_id != "time.midday_meal_prompt"]
+        if any(r.rule_id != "lifestyle.set_daily_targets" for r in today_recs):
+            today_recs = [r for r in today_recs if r.rule_id != "lifestyle.set_daily_targets"]
 
     if not today_recs:
         # Fall back to the most recent recommendation in history
         return (
             db.query(Recommendation)
-            .filter(Recommendation.user_id == current_user.id)
+            .filter(
+                Recommendation.user_id == current_user.id,
+                Recommendation.rule_id != "lifestyle.set_daily_targets",
+            )
             .order_by(Recommendation.created_at.desc())
             .first()
         )
 
-    # 2. Today's Primary Action
-    for r in today_recs:
-        if r.tier == "primary_action":
-            return r
-
-    # 3. Today's Supporting Insight
-    for r in today_recs:
-        if r.tier == "supporting_insight":
-            return r
-
-    # 4. Any today's recommendation (newest first)
+    # 2. Most recently triggered insight for today takes the dashboard!
     return today_recs[0]
 
 

@@ -19,21 +19,15 @@ try {
     bootGoalEl.textContent = `Goal: ${Number(bootStepsGoal).toLocaleString()}`;
   }
 
-  const initialCard = resolveContextualCard({
-    userProfile: user,
-    topRec: null,
-    vitalsData: null,
-    mealsData: null,
-    calorieTarget: user.daily_calorie_target || 2200,
-  });
+  const initialCard = getContextualFallback(user.name?.split(' ')[0] || 'there');
   if (initialCard) {
     renderRec(initialCard);
   }
 } catch { /* ignore */ }
 
-
 let macrosChart = null;
 let _lastMeals = []; // cache latest today's meals for the 30s poll
+let _lastVitals = null;
 
 
 // Map snake_case API response to camelCase expected by render functions
@@ -181,25 +175,50 @@ function getRotatingMorningInsight(name) {
 async function checkAndPersistMorningInsight(firstName) {
   const key = `vita_morning_${todayISO()}`;
   if (localStorage.getItem(key)) return; // already persisted today
+  localStorage.setItem(key, '1'); // Lock immediately to prevent duplicate concurrent triggers
   const morningCard = getRotatingMorningInsight(firstName);
   await persistContextualInsight(morningCard);
-  localStorage.setItem(key, '1');
+  localStorage.setItem('vita_targets_cleared', '1'); // Any new insight permanently retires onboarding
 }
 
-let recSwitchTimer = null;
+function getRecBadge(rec) {
+  if (rec.badge) return rec.badge;
+  const isCritical = rec.tier === 'safety' || rec.priority === 'critical' || rec.severity === 'critical';
+  if (isCritical) return 'Health Alert 🚨';
+  if (rec.rule_id === 'lifestyle.set_daily_targets') return 'Getting Started 🚀';
+  if (rec.rule_id === 'dynamic.morning_poetic') return 'Morning Vitality ☀️';
+  if (rec.rule_id === 'time.midday_meal_prompt') return 'Fuel Check-In 🥗';
+  if (rec.rule_id === 'milestone.meals_logged_on_track') return 'Nutrition On Track 🥗';
+  if (rec.rule_id === 'milestone.calories_met') return 'Energy Balance 🎯';
+  if (rec.rule_id === 'milestone.steps_met') return 'Milestone Achieved ⭐';
+  if (rec.rule_id === 'time.evening_steps_push') return 'Evening Boost 🚶‍♂️';
+  if (rec.rule_id === 'time.evening_calorie_push') return 'Calorie Goal 🌙';
+  if (rec.type === 'activity') return 'Activity Boost 👟';
+  if (rec.type === 'nutrition') return 'Nutrition Tip 🥗';
+  if (rec.type === 'health_alert') return 'Wellness Alert ⚠️';
+  return "Today's tip";
+}
 
-function renderSingleRecContent(rec) {
+function renderRec(rec) {
+  // Remove any legacy tab toggle bar
+  const oldSwitcher = document.getElementById('rec-switcher-controls');
+  if (oldSwitcher) oldSwitcher.remove();
+
+  if (!rec) {
+    renderRecFallback();
+    return;
+  }
+
   const textEl = document.getElementById('rec-text');
   const triggerEl = document.getElementById('rec-trigger');
   const badgeEl = document.getElementById('rec-badge');
   if (!textEl) return;
 
+  const isCritical = rec.tier === 'safety' || rec.priority === 'critical' || rec.severity === 'critical';
+  const badgeText = getRecBadge(rec);
+
   if (badgeEl) {
-    const isCritical = rec.tier === 'safety' || rec.priority === 'critical' || rec.severity === 'critical';
-    const defaultBadge = rec.rule_id === 'lifestyle.set_daily_targets' ? 'Getting Started' : (isCritical ? 'Health Alert 🚨' : "Today's tip");
-    const badgeText = rec.badge || defaultBadge;
     badgeEl.innerHTML = `<i data-lucide="${isCritical ? 'alert-triangle' : 'sparkles'}"></i> ${badgeText}`;
-    
     if (isCritical) {
       badgeEl.style.background = 'rgba(229, 62, 62, 0.2)';
       badgeEl.style.color = '#ff8080';
@@ -219,7 +238,7 @@ function renderSingleRecContent(rec) {
     const rawRoute = rec.action_data?.route || '';
     const cleanRoute = rawRoute.replace(/^\//, '');
     if (cleanRoute) {
-      actionBtn = `<a href="${cleanRoute}" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">${rec.action_data.action_label || 'View Details'} →</a>`;
+      actionBtn = `<a href="${cleanRoute}" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">${rec.action_data?.action_label || 'View Details'} →</a>`;
     }
     const viewAllLink = `<a href="recommendations.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">All insights</a>`;
     triggerEl.innerHTML = `<div class="row between align-center mt-2">${actionBtn || '<span></span>'}${viewAllLink}</div>`;
@@ -227,86 +246,9 @@ function renderSingleRecContent(rec) {
   initLucide();
 }
 
-function renderRec(cardResult) {
-  if (recSwitchTimer) {
-    clearInterval(recSwitchTimer);
-    recSwitchTimer = null;
-  }
-
-  // Remove any previous tab toggle bar
-  const oldSwitcher = document.getElementById('rec-switcher-controls');
-  if (oldSwitcher) oldSwitcher.remove();
-
-  if (!cardResult) {
-    renderRecFallback();
-    return;
-  }
-
-  const cards = cardResult.cards || (Array.isArray(cardResult) ? cardResult : null);
-
-  // If multiple insights are available for today (e.g. Evening Step, Midday Meal, Morning Tip)
-  if (Array.isArray(cards) && cards.length > 1) {
-    let activeIndex = 0;
-
-    const recCardEl = document.getElementById('rec-card');
-    const switcher = document.createElement('div');
-    switcher.id = 'rec-switcher-controls';
-    switcher.className = 'row gap-xs mb-2 align-center flex-wrap';
-
-    cards.forEach((c, idx) => {
-      const btn = document.createElement('button');
-      btn.id = `rec-tab-btn-${idx}`;
-      btn.type = 'button';
-      btn.className = `btn btn-xs`;
-      btn.style.cssText = `padding:0.25rem 0.75rem; border-radius:999px; font-size:0.75rem; font-weight:${idx === 0 ? '700' : '500'}; transition:all 0.25s ease; ${idx === 0 ? 'background:rgba(255,255,255,0.3); color:#fff; border:1px solid rgba(255,255,255,0.4);' : 'background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.75); border:1px solid transparent;'}`;
-      btn.innerHTML = c.tabLabel || c.badge || `Insight ${idx + 1}`;
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        switchToIndex(idx);
-      };
-      switcher.appendChild(btn);
-    });
-
-    if (recCardEl) {
-      recCardEl.insertBefore(switcher, recCardEl.firstChild);
-    }
-
-    function switchToIndex(idx) {
-      activeIndex = idx;
-      cards.forEach((_, i) => {
-        const b = document.getElementById(`rec-tab-btn-${i}`);
-        if (b) {
-          b.style.background = i === idx ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)';
-          b.style.color = i === idx ? '#fff' : 'rgba(255,255,255,0.75)';
-          b.style.fontWeight = i === idx ? '700' : '500';
-          b.style.borderColor = i === idx ? 'rgba(255,255,255,0.4)' : 'transparent';
-        }
-      });
-      renderSingleRecContent(cards[idx]);
-    }
-
-    renderSingleRecContent(cardResult.activeCard || cards[0]);
-  } else {
-    renderSingleRecContent(cardResult.activeCard || cardResult);
-  }
-}
-
-function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, calorieTarget }) {
-  const now = new Date();
-  const hour = now.getHours();
-  const firstName = userProfile.name?.split(' ')[0] || 'there';
-  const savedTargets = userProfile.notification_preferences?.targets || {};
-  const targetSteps = savedTargets.target_steps || 10000;
-  const hasMealsLoaded = Array.isArray(mealsData);
-  const mealsCount = hasMealsLoaded ? mealsData.length : null;
-  const consumedCals = hasMealsLoaded ? Math.round(mealsData.reduce((sum, m) => sum + (m.totalCalories || 0), 0)) : 0;
-  const today = todayISO();
-  const joinDate = userProfile.created_at ? getLocalTimestampDate(userProfile.created_at) : '';
-  const isJoinedToday = joinDate === today;
-
-  // 1. Day 1 new user who joined TODAY and has not configured targets yet
-  if (isJoinedToday && !userProfile.daily_calorie_target) {
-    if (topRec?.rule_id === 'lifestyle.set_daily_targets') return topRec;
+function getContextualFallback(firstName) {
+  const isCleared = localStorage.getItem('vita_targets_cleared') === '1' || (user && user.daily_calorie_target);
+  if (!isCleared) {
     return {
       badge: 'Getting Started 🚀',
       title: 'Set Your Daily Health Targets',
@@ -315,183 +257,31 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
       rule_id: 'lifestyle.set_daily_targets',
     };
   }
+  return getRotatingMorningInsight(firstName);
+}
 
-  // ── BUILD THE 3 GUARANTEED DAILY INSIGHTS ──────────────────────────────────
-  // Card 1: Good Morning Vitality
-  const morningCard = getRotatingMorningInsight(firstName);
-  morningCard.tabLabel = '☀️ Morning Tip';
-
-  // Card 2: Meal / Calorie Insight
-  // Rules:
-  //   - If calorie target is already met → celebrate (any time of day)
-  //   - Else if it's past noon, meals definitely loaded, and strictly 0 meals logged → midday "no meal" prompt
-  //   - Else if it's past 7 PM and calories < target → evening calorie reminder
-  //   - Else if meals have been logged → on-track acknowledgement
-  //   - Else (meals not loaded yet) → neutral morning tip
-  const calorieMet = calorieTarget > 0 && consumedCals >= calorieTarget;
-  let mealCard;
-  if (calorieMet) {
-    mealCard = {
-      badge: 'Energy Balance 🎯',
-      title: 'Calorie Target Crushed! 🎉',
-      message: `You did it, ${firstName}! You've reached your daily calorie target (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal). Keep fuelling your body well — great nutrition is the foundation of great health!`,
-      action_data: { action_label: 'View Nutrition', route: 'food-log.html' },
-      rule_id: 'milestone.calories_met',
-      tabLabel: '🎯 Calorie Hit',
-      tier: 'primary_action',
-    };
-  } else if (hasMealsLoaded && mealsCount === 0 && hour >= 12) {
-    mealCard = {
-      badge: 'Fuel Check-In 🥗',
-      title: 'Midday Fuel Check-In',
-      message: `It's past noon and no meals are logged yet, ${firstName}. If you aren't fasting, take a moment to nourish your body and snap a photo of your lunch to keep your energy steady.`,
-      action_data: { action_label: 'Log Lunch', route: 'food-log.html' },
-      rule_id: 'time.midday_meal_prompt',
-      tabLabel: '🥗 Meal Check',
-      tier: 'primary_action',
-    };
-  } else if (hour >= 19 && calorieTarget > 0 && consumedCals < calorieTarget) {
-    const remaining = calorieTarget - consumedCals;
-    mealCard = {
-      badge: 'Calorie Goal 🌙',
-      title: 'Evening Calorie Check-In',
-      message: `You're ${remaining.toLocaleString()} kcal away from your daily target, ${firstName}. Consider logging a balanced dinner or snack to round out your nutrition for the day (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal).`,
-      action_data: { action_label: 'Log Meal', route: 'food-log.html' },
-      rule_id: 'time.evening_calorie_push',
-      tabLabel: '🌙 Cal Reminder',
-      tier: 'primary_action',
-    };
-  } else if (hasMealsLoaded && mealsCount > 0) {
-    mealCard = {
-      badge: 'Nutrition On Track 🥗',
-      title: 'Meals Logged & On Track! 🎉',
-      message: `Great job staying on top of your nutrition today, ${firstName}! You've logged ${mealsCount} meal(s) totaling ${consumedCals.toLocaleString()} kcal. Consistent food logging powers metabolic health.`,
-      action_data: { action_label: 'View Food Log', route: 'food-log.html' },
-      rule_id: 'milestone.meals_logged_on_track',
-      tabLabel: '🥗 Meal Logged',
-      tier: 'primary_action',
-    };
-  } else {
-    mealCard = morningCard;
-  }
-
-  // Card 3: Step Insight (Push if steps not completed, or Congratulations if completed)
-  let stepCard;
-  if (targetSteps > 0 && steps >= targetSteps) {
-    stepCard = {
-      badge: 'Milestone Achieved ⭐',
-      title: 'Daily Step Goal Crushed! 🎉',
-      message: `Incredible work, ${firstName}! You’ve hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
-      action_data: { action_label: 'View Activity', route: 'vitals.html' },
-      rule_id: 'milestone.steps_met',
-      tabLabel: '⭐ Steps Met',
-      tier: 'primary_action',
-    };
-  } else {
-    const remaining = Math.max(0, targetSteps - steps);
-    stepCard = {
-      badge: 'Evening Boost 🚶‍♂️',
-      title: 'Evening Step Boost',
-      message: `You’re at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
-      action_data: { action_label: 'Track Activity', route: 'vitals.html' },
-      rule_id: 'time.evening_steps_push',
-      tabLabel: '🚶 Evening Steps',
-      tier: 'primary_action',
-    };
-  }
-
-  const isCritical = topRec && (topRec.tier === 'safety' || topRec.priority === 'critical' || topRec.severity === 'critical');
-  const isHighAlert = topRec && (topRec.priority === 'high' || topRec.severity === 'warning');
-
-  // Assemble active cards for today ordered by current time-of-day:
-  // Check if topRec is a specialized AI / Vitals / Sleep / Correlation rule
-  const isSpecializedEngineRec = topRec && topRec.rule_id && 
-    !topRec.rule_id.startsWith('time.') &&
-    !topRec.rule_id.startsWith('lifestyle.set_daily_targets') &&
-    !topRec.rule_id.startsWith('lifestyle.daily_wellness_focus') &&
-    topRec.rule_id !== 'dynamic.morning_poetic';
-
-  if (topRec && isSpecializedEngineRec) {
-    if (!topRec.tabLabel) {
-      if (isCritical) {
-        topRec.tabLabel = '🚨 Safety Alert';
-      } else if (isHighAlert) {
-        topRec.tabLabel = '⚠️ Priority Insight';
-      } else if (topRec.rule_id.startsWith('vitals.') || topRec.rule_id.startsWith('sleep.')) {
-        topRec.tabLabel = '💤 Sleep & Vitals';
-      } else if (topRec.rule_id.startsWith('correlation.')) {
-        topRec.tabLabel = '⚡ Correlation';
-      } else if (topRec.rule_id.startsWith('activity.')) {
-        topRec.tabLabel = '👟 Activity Trend';
-      } else if (topRec.rule_id.startsWith('nutrition.')) {
-        topRec.tabLabel = '🥗 Nutrition';
-      } else {
-        topRec.tabLabel = '💡 AI Insight';
-      }
-    }
-  }
-
-  // Assemble active cards for today ordered by priority and time-of-day:
-  const cards = [];
-
-  // Critical Safety Alert always takes highest precedence if active
-  if (isCritical && topRec) {
-    topRec.tabLabel = '🚨 Critical Alert';
-  }
-
-  // 1. Critical safety alerts and high priority health warnings always lead
-  if (topRec && (isCritical || isHighAlert) && isSpecializedEngineRec) {
-    cards.push(topRec);
-  }
-
-  // Time-of-day progression:
-  // 2. Time-of-day progression cards:
-  if (hour >= 18) {
-    // Evening (6:00 PM – 11:59 PM): Step card is default active, Meal and Morning accessible
-    cards.push(stepCard);
-    cards.push(mealCard);
-    cards.push(morningCard);
-  } else if (hour >= 12) {
-    // Midday (12:00 PM – 5:59 PM): Meal card is default active, Morning accessible
-    cards.push(mealCard);
-    cards.push(morningCard);
-  } else {
-    // Morning (12:00 AM – 11:59 AM): Morning vitality is default active
-    cards.push(morningCard);
-  }
-
-  // 3. If there is an active specialized AI engine recommendation (medium/low priority),
-  // add it as an accessible tab so the user can easily switch to it directly on the dashboard
-  if (topRec && !isCritical && !isHighAlert && isSpecializedEngineRec) {
-    const alreadyPresent = cards.some(c => c.rule_id === topRec.rule_id);
-    if (!alreadyPresent) {
-      cards.push(topRec);
-    }
-  }
-
-  return {
-    isMultiTab: cards.length > 1,
-    cards,
-    activeCard: cards[0],
-  };
+function renderRecFallback() {
+  const firstName = user?.name?.split(' ')[0] || 'there';
+  renderRec(getContextualFallback(firstName));
 }
 
 // Persist the 3 core daily insights into the database as the day progresses
 async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData, mealsData, calorieTarget }) {
   const now = new Date();
   const hour = now.getHours();
-  const firstName = userName || userProfile.name?.split(' ')[0] || 'there';
+  const firstName = userName || userProfile?.name?.split(' ')[0] || 'there';
   const today = todayISO();
 
   // 1. Morning Insight (Always persisted once per calendar day)
   await checkAndPersistMorningInsight(firstName).catch(() => {});
 
-  // 2a. Calorie Target Celebration — fires IMMEDIATELY whenever target is first crossed (any time)
+  // 2a. Calorie Target Celebration — fires immediately whenever target is reached
   const mealsCount = (mealsData || []).length;
   const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
   const calorieMet = calorieTarget > 0 && consumedCals >= calorieTarget;
   const calCrushedKey = `vita_cal_${today}_crushed`;
   if (calorieMet && !localStorage.getItem(calCrushedKey)) {
+    localStorage.setItem(calCrushedKey, '1');
     const calCard = {
       badge: 'Energy Balance 🎯',
       title: 'Calorie Target Crushed! 🎉',
@@ -501,14 +291,14 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
       tier: 'primary_action',
     };
     await persistContextualInsight(calCard).catch(() => {});
-    localStorage.setItem(calCrushedKey, '1');
+    localStorage.setItem('vita_targets_cleared', '1');
   }
 
   // 2b. Midday no-meal prompt — only fires if past noon AND meals are definitely loaded AND strictly 0 meals logged
   if (Array.isArray(mealsData) && mealsData.length === 0 && hour >= 12) {
     const midnoonKey = `vita_meal_${today}_prompt`;
     if (!localStorage.getItem(midnoonKey)) {
-      localStorage.setItem(midnoonKey, '1'); // Lock IMMEDIATELY to prevent duplicate concurrent triggers!
+      localStorage.setItem(midnoonKey, '1'); // Lock IMMEDIATELY to prevent duplicate concurrent triggers
       const mealCard = {
         badge: 'Fuel Check-In 🥗',
         title: 'Midday Fuel Check-In',
@@ -518,83 +308,48 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
         tier: 'primary_action',
       };
       await persistContextualInsight(mealCard).catch(() => {});
+      localStorage.setItem('vita_targets_cleared', '1');
     }
   }
 
-  // 2c. Evening calorie reminder — fires at 7 PM if target still not met
-  if (hour >= 19 && calorieTarget > 0 && !calorieMet) {
-    const calPushKey = `vita_cal_${today}_evening_push`;
-    if (!localStorage.getItem(calPushKey)) {
-      const remaining = calorieTarget - consumedCals;
-      const calReminderCard = {
-        badge: 'Calorie Goal 🌙',
-        title: 'Evening Calorie Check-In',
-        message: `You're ${remaining.toLocaleString()} kcal away from your daily target, ${firstName}. Consider logging a balanced dinner or snack to round out your nutrition for the day (${consumedCals.toLocaleString()} / ${calorieTarget.toLocaleString()} kcal).`,
-        action_data: { action_label: 'Log Meal', route: 'food-log.html' },
-        rule_id: 'time.evening_calorie_push',
+  // 3. Step Goal & Evening Boost
+  const savedTargets = userProfile?.notification_preferences?.targets || {};
+  const targetSteps = savedTargets.target_steps || userProfile?.target_steps || 10000;
+  const steps = vitalsData?.steps || 0;
+  const isStepCompleted = targetSteps > 0 && steps >= targetSteps;
+
+  if (isStepCompleted) {
+    const stepCrushedKey = `vita_step_${today}_crushed`;
+    if (!localStorage.getItem(stepCrushedKey)) {
+      localStorage.setItem(stepCrushedKey, '1');
+      const stepCard = {
+        badge: 'Milestone Achieved ⭐',
+        title: 'Daily Step Goal Crushed! 🎉',
+        message: `Incredible work, ${firstName}! You've hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
+        action_data: { action_label: 'View Activity', route: 'vitals.html' },
+        rule_id: 'milestone.steps_met',
         tier: 'primary_action',
       };
-      await persistContextualInsight(calReminderCard).catch(() => {});
-      localStorage.setItem(calPushKey, '1');
-    }
-  }
-
-  // 3. Evening Step Insight (Persisted once hour >= 18)
-  if (hour >= 18) {
-    const savedTargets = userProfile.notification_preferences?.targets || {};
-    const targetSteps = savedTargets.target_steps || 10000;
-    const steps = vitalsData?.steps || 0;
-    const isCompleted = targetSteps > 0 && steps >= targetSteps;
-    const stepStatus = isCompleted ? 'crushed' : 'push';
-    const stepKey = `vita_step_${today}_${stepStatus}`;
-    if (!localStorage.getItem(stepKey)) {
-      let stepCard;
-      if (isCompleted) {
-        stepCard = {
-          badge: 'Milestone Achieved ⭐',
-          title: 'Daily Step Goal Crushed! 🎉',
-          message: `Incredible work, ${firstName}! You've hit ${steps.toLocaleString()} steps, surpassing your daily target of ${targetSteps.toLocaleString()}. Consistent movement powers cardiovascular endurance and metabolic vitality.`,
-          action_data: { action_label: 'View Activity', route: 'vitals.html' },
-          rule_id: 'milestone.steps_met',
-          tier: 'primary_action',
-        };
-      } else {
-        const remaining = Math.max(0, targetSteps - steps);
-        stepCard = {
-          badge: 'Evening Boost 🚶‍♂️',
-          title: 'Evening Step Boost',
-          message: `You're at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
-          action_data: { action_label: 'Track Activity', route: 'vitals.html' },
-          rule_id: 'time.evening_steps_push',
-          tier: 'primary_action',
-        };
-      }
       await persistContextualInsight(stepCard).catch(() => {});
-      localStorage.setItem(stepKey, '1');
+      localStorage.setItem('vita_targets_cleared', '1');
+    }
+  } else if (hour >= 18) {
+    const stepPushKey = `vita_step_${today}_push`;
+    if (!localStorage.getItem(stepPushKey)) {
+      localStorage.setItem(stepPushKey, '1');
+      const remaining = Math.max(0, targetSteps - steps);
+      const stepCard = {
+        badge: 'Evening Boost 🚶‍♂️',
+        title: 'Evening Step Boost',
+        message: `You're at ${steps.toLocaleString()} steps—just ${remaining.toLocaleString()} steps away from reaching your daily target of ${targetSteps.toLocaleString()}! A pleasant evening stroll after dinner will carry you across the finish line.`,
+        action_data: { action_label: 'Track Activity', route: 'vitals.html' },
+        rule_id: 'time.evening_steps_push',
+        tier: 'primary_action',
+      };
+      await persistContextualInsight(stepCard).catch(() => {});
+      localStorage.setItem('vita_targets_cleared', '1');
     }
   }
-}
-
-
-function renderRecFallback() {
-  const textEl = document.getElementById('rec-text');
-  const triggerEl = document.getElementById('rec-trigger');
-  const badgeEl = document.getElementById('rec-badge');
-  if (!textEl) return;
-
-  if (badgeEl) {
-    badgeEl.innerHTML = '<i data-lucide="sparkles"></i> Getting Started';
-    badgeEl.style.color = '';
-    badgeEl.style.background = '';
-    badgeEl.style.borderColor = '';
-  }
-
-  textEl.innerHTML = '<strong style="display:block; margin-bottom:0.25rem; font-size:1.05rem">Set Your Daily Health Targets</strong><span>Personalize your daily calorie, macro, step, and sleep targets to start tracking your progress and receive tailored AI health insights.</span>';
-
-  if (triggerEl) {
-    triggerEl.innerHTML = '<div class="row between align-center mt-2"><a href="goals.html?edit=1" style="background:#ffffff; color:#1B4332; font-weight:700; padding:0.35rem 0.85rem; border-radius:999px; text-decoration:none; display:inline-flex; align-items:center; gap:0.35rem; font-size:0.8125rem; box-shadow:0 2px 8px rgba(0,0,0,0.18);">Configure Targets →</a><a href="goals.html" style="color:rgba(255,255,255,0.9); font-size:0.8125rem; text-decoration:underline; font-weight:500">View Goals</a></div>';
-  }
-  initLucide();
 }
 
 
@@ -760,35 +515,26 @@ async function loadAll() {
     document.getElementById('recent-meals').innerHTML = '<div class="card center muted">Could not load meals.</div>';
   }
 
-  // 4. Fetch Top Recommendation & Resolve Contextual Smart Card
-  try {
-    let topRec = null;
-    try {
-      topRec = await api.get('/recommendations/top');
-    } catch { /* ignore */ }
-
-    // Ensure the 3 guaranteed daily insights (Morning, Midday Meal, Evening Steps)
-    // are evaluated and persisted to the database (only if meals were successfully fetched)
-    if (todayMeals !== null) {
-      await checkAndPersistDailyInsights({
-        userProfile: user,
-        userName,
-        vitalsData: adaptedVitals,
-        mealsData: todayMeals,
-        calorieTarget: calorieGoal,
-      }).catch(() => {});
-    }
-
-    const smartCard = resolveContextualCard({
+  // 4. Ensure guaranteed daily insights (Morning, Midday Meal, Steps, Calories) are evaluated & persisted
+  if (todayMeals !== null) {
+    _lastVitals = adaptedVitals;
+    await checkAndPersistDailyInsights({
       userProfile: user,
-      topRec,
+      userName,
       vitalsData: adaptedVitals,
       mealsData: todayMeals,
       calorieTarget: calorieGoal,
-    });
+    }).catch(() => {});
+  }
 
-    if (smartCard) {
-      renderRec(smartCard);
+  // 5. Fetch Authoritative Top Recommendation from server
+  try {
+    const topRec = await api.get('/recommendations/top');
+    if (topRec) {
+      if (topRec.rule_id !== 'lifestyle.set_daily_targets') {
+        localStorage.setItem('vita_targets_cleared', '1');
+      }
+      renderRec(topRec);
     } else {
       renderRecFallback();
     }
@@ -807,7 +553,8 @@ async function syncNow() {
     // Trigger Google Health sync + get fresh vitals in one call
     const result = await api.post('/vitals/sync-all', {});
     if (result.vitals) {
-      renderVitals(adaptVitals(result.vitals));
+      _lastVitals = adaptVitals(result.vitals);
+      renderVitals(_lastVitals);
       renderBmi(result.vitals.weight ?? user.weight, user.height);
     }
     // Also refresh meals, recommendations, profile
@@ -825,26 +572,35 @@ async function syncNow() {
   }
 }
 
-
-
 document.getElementById('sync-btn')?.addEventListener('click', () => syncNow());
 document.getElementById('sync-btn-2')?.addEventListener('click', () => syncNow());
 
-// Poll vitals every 30s; also checks for midnight crossover to persist morning insight
+// Poll vitals every 30s; also checks for time slot crossovers and updates dashboard insight
 setInterval(async () => {
   try {
     const v = await api.get('/vitals/latest?date_str=' + todayISO());
-    renderVitals(adaptVitals(v));
+    _lastVitals = adaptVitals(v);
+    renderVitals(_lastVitals);
     renderBmi(v.weight ?? user.weight, user.height);
   } catch { /* ignore */ }
-  // Check for time slot crossovers and calorie milestone (uses _lastMeals for live calorie total)
+
   const firstName = user.name?.split(' ')[0] || 'there';
-  checkAndPersistDailyInsights({
+  await checkAndPersistDailyInsights({
     userProfile: user,
     userName: firstName,
-    vitalsData: null,
+    vitalsData: _lastVitals,
     mealsData: _lastMeals,
     calorieTarget: user.daily_calorie_target || 2200,
   }).catch(() => {});
+
+  try {
+    const topRec = await api.get('/recommendations/top');
+    if (topRec) {
+      if (topRec.rule_id !== 'lifestyle.set_daily_targets') {
+        localStorage.setItem('vita_targets_cleared', '1');
+      }
+      renderRec(topRec);
+    }
+  } catch { /* ignore */ }
 }, 30000);
 

@@ -97,7 +97,7 @@ FALLBACK_RULES = [
         condition=lambda f: _profile(f).target_calories is None,
         action=_rule_set_targets_action,
         weight=35,
-        cooldown_days=1,
+        cooldown_days=9999,
     ),
     Rule(
         rule_id="lifestyle.daily_wellness_focus",
