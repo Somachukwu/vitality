@@ -50,6 +50,17 @@ def log_meal(
     for item in body.items:
         db.add(MealItem(meal_id=meal.id, **item.model_dump()))
 
+    # Auto-dismiss/purge any midday meal prompt for today since the user has logged a meal
+    from datetime import datetime, timezone
+    from app.models.recommendation import Recommendation
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    today_start = datetime.combine(now_naive.date(), datetime.min.time())
+    db.query(Recommendation).filter(
+        Recommendation.user_id == current_user.id,
+        Recommendation.rule_id == "time.midday_meal_prompt",
+        Recommendation.created_at >= today_start,
+    ).delete(synchronize_session=False)
+
     db.commit()
     db.refresh(meal)
     background_tasks.add_task(_run_recommendation_background, current_user.id)

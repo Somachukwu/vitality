@@ -27,6 +27,47 @@ def create_or_log_recommendation(
     now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     today_start = datetime.combine(now_naive.date(), datetime.min.time())
 
+    # ── GUARD: Midday meal prompt must NEVER trigger if user has logged any meal today ──
+    if payload.rule_id == "time.midday_meal_prompt":
+        from app.models.meal import Meal
+        today_meals_count = (
+            db.query(Meal)
+            .filter(
+                Meal.user_id == current_user.id,
+                Meal.logged_at >= today_start,
+            )
+            .count()
+        )
+        if today_meals_count > 0:
+            # User has already logged meal(s) today! Purge any stale midday prompts.
+            db.query(Recommendation).filter(
+                Recommendation.user_id == current_user.id,
+                Recommendation.rule_id == "time.midday_meal_prompt",
+                Recommendation.created_at >= today_start,
+            ).delete(synchronize_session=False)
+            db.commit()
+
+            latest = (
+                db.query(Recommendation)
+                .filter(Recommendation.user_id == current_user.id)
+                .order_by(Recommendation.created_at.desc())
+                .first()
+            )
+            if latest:
+                return latest
+            return Recommendation(
+                id=0,
+                user_id=current_user.id,
+                type="nutrition",
+                severity="info",
+                tier="primary_action",
+                rule_id="time.midday_meal_prompt_skipped",
+                title="Meals Logged",
+                message="Meals already logged today",
+                is_read=True,
+                created_at=now_naive,
+            )
+
     # De-duplicate if same rule_id already logged today for this user
     if payload.rule_id:
         existing = (
@@ -141,8 +182,20 @@ def get_top_recommendation(
         .order_by(Recommendation.created_at.desc())
         .all()
     )
+
+    from app.models.meal import Meal
+    today_meals_count = (
+        db.query(Meal)
+        .filter(Meal.user_id == current_user.id, Meal.logged_at >= today_start_dt)
+        .count()
+    )
+    if today_meals_count > 0:
+        today_recs = [r for r in today_recs if r.rule_id != "time.midday_meal_prompt"]
+
     if not today_recs:
         today_recs = generate_and_persist_recommendations(current_user.id, db)
+        if today_meals_count > 0 and today_recs:
+            today_recs = [r for r in today_recs if r.rule_id != "time.midday_meal_prompt"]
 
     if not today_recs:
         # Fall back to the most recent recommendation in history

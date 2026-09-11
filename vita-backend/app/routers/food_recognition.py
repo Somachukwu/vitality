@@ -1,8 +1,11 @@
+import logging
 import os
 import tempfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -52,6 +55,7 @@ def _validate_image(file: UploadFile) -> None:
 
 def _configure_cloudinary() -> bool:
     if not settings.CLOUDINARY_URL:
+        logger.warning("CLOUDINARY_URL is not set in environment. Image will be stored locally on disk.")
         return False
     try:
         import re
@@ -73,7 +77,7 @@ def _configure_cloudinary() -> bool:
             cloudinary.config()
             return True
     except Exception as e:
-        print("Cloudinary configuration error:", e)
+        logger.error(f"Cloudinary configuration error: {e}")
         return False
 
 
@@ -84,10 +88,14 @@ async def _upload_to_cloudinary(file_path: str) -> str | None:
         import asyncio
         import cloudinary.uploader
         res = await asyncio.to_thread(cloudinary.uploader.upload, file_path, folder="vitality_meals")
-        return res.get("secure_url") if res else None
+        url = res.get("secure_url") if res else None
+        if url:
+            logger.info(f"Successfully uploaded meal image to Cloudinary: {url}")
+        return url
     except Exception as exc:
-        print("Cloudinary upload warning:", exc)
+        logger.error(f"Cloudinary upload failed for {file_path}: {exc}")
         return None
+
 
 
 # ── Schemas returned by this router ──────────────────────────────────────────
@@ -226,6 +234,16 @@ async def log_meal_from_photo(
                 save_path.unlink(missing_ok=True)
             else:
                 final_image_url = f"/uploads/meals/{filename}"
+
+    # If final_image_url is a local path and Cloudinary is configured, upload to Cloudinary now
+    if final_image_url and final_image_url.startswith("/uploads/meals/"):
+        local_filename = final_image_url.split("/uploads/meals/")[-1]
+        local_path = UPLOADS_DIR / local_filename
+        if local_path.exists():
+            cloud_url = await _upload_to_cloudinary(str(local_path))
+            if cloud_url:
+                final_image_url = cloud_url
+                local_path.unlink(missing_ok=True)
 
     # If user provided a food_name override or if result is missing/ambiguous, lookup nutrition for the specified food
     if food_name or not result or result.get("is_ambiguous") or not result.get("food_name"):

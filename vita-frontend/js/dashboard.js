@@ -23,7 +23,7 @@ try {
     userProfile: user,
     topRec: null,
     vitalsData: null,
-    mealsData: [],
+    mealsData: null,
     calorieTarget: user.daily_calorie_target || 2200,
   });
   if (initialCard) {
@@ -297,9 +297,9 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   const firstName = userProfile.name?.split(' ')[0] || 'there';
   const savedTargets = userProfile.notification_preferences?.targets || {};
   const targetSteps = savedTargets.target_steps || 10000;
-  const steps = vitalsData?.steps || 0;
-  const consumedCals = Math.round((mealsData || []).reduce((sum, m) => sum + (m.totalCalories || 0), 0));
-  const mealsCount = (mealsData || []).length;
+  const hasMealsLoaded = Array.isArray(mealsData);
+  const mealsCount = hasMealsLoaded ? mealsData.length : null;
+  const consumedCals = hasMealsLoaded ? Math.round(mealsData.reduce((sum, m) => sum + (m.totalCalories || 0), 0)) : 0;
   const today = todayISO();
   const joinDate = userProfile.created_at ? getLocalTimestampDate(userProfile.created_at) : '';
   const isJoinedToday = joinDate === today;
@@ -324,9 +324,10 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
   // Card 2: Meal / Calorie Insight
   // Rules:
   //   - If calorie target is already met → celebrate (any time of day)
-  //   - Else if it's past noon and no meals logged → midday "no meal" prompt
+  //   - Else if it's past noon, meals definitely loaded, and strictly 0 meals logged → midday "no meal" prompt
   //   - Else if it's past 7 PM and calories < target → evening calorie reminder
-  //   - Else (meals logged, target not met, before 7 PM) → on-track acknowledgement
+  //   - Else if meals have been logged → on-track acknowledgement
+  //   - Else (meals not loaded yet) → neutral morning tip
   const calorieMet = calorieTarget > 0 && consumedCals >= calorieTarget;
   let mealCard;
   if (calorieMet) {
@@ -339,7 +340,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
       tabLabel: '🎯 Calorie Hit',
       tier: 'primary_action',
     };
-  } else if (mealsCount === 0 && hour >= 12) {
+  } else if (hasMealsLoaded && mealsCount === 0 && hour >= 12) {
     mealCard = {
       badge: 'Fuel Check-In 🥗',
       title: 'Midday Fuel Check-In',
@@ -360,7 +361,7 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
       tabLabel: '🌙 Cal Reminder',
       tier: 'primary_action',
     };
-  } else {
+  } else if (hasMealsLoaded && mealsCount > 0) {
     mealCard = {
       badge: 'Nutrition On Track 🥗',
       title: 'Meals Logged & On Track! 🎉',
@@ -370,6 +371,8 @@ function resolveContextualCard({ userProfile, topRec, vitalsData, mealsData, cal
       tabLabel: '🥗 Meal Logged',
       tier: 'primary_action',
     };
+  } else {
+    mealCard = morningCard;
   }
 
   // Card 3: Step Insight (Push if steps not completed, or Congratulations if completed)
@@ -501,10 +504,11 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
     localStorage.setItem(calCrushedKey, '1');
   }
 
-  // 2b. Midday no-meal prompt — only fires if past noon AND no meals have been logged
-  if (hour >= 12 && mealsCount === 0) {
+  // 2b. Midday no-meal prompt — only fires if past noon AND meals are definitely loaded AND strictly 0 meals logged
+  if (Array.isArray(mealsData) && mealsData.length === 0 && hour >= 12) {
     const midnoonKey = `vita_meal_${today}_prompt`;
     if (!localStorage.getItem(midnoonKey)) {
+      localStorage.setItem(midnoonKey, '1'); // Lock IMMEDIATELY to prevent duplicate concurrent triggers!
       const mealCard = {
         badge: 'Fuel Check-In 🥗',
         title: 'Midday Fuel Check-In',
@@ -514,7 +518,6 @@ async function checkAndPersistDailyInsights({ userProfile, userName, vitalsData,
         tier: 'primary_action',
       };
       await persistContextualInsight(mealCard).catch(() => {});
-      localStorage.setItem(midnoonKey, '1');
     }
   }
 
@@ -745,7 +748,7 @@ async function loadAll() {
   renderBmi(latestWeight ?? user.weight, user.height);
 
   // 3. Fetch Meals (today only, reset at 12:00 AM local time)
-  let todayMeals = [];
+  let todayMeals = null;
   try {
     const rawMeals = await api.get('/meals/');
     todayMeals = rawMeals.filter(m => getLocalTimestampDate(m.logged_at) === today).map(adaptMeal);
@@ -765,14 +768,16 @@ async function loadAll() {
     } catch { /* ignore */ }
 
     // Ensure the 3 guaranteed daily insights (Morning, Midday Meal, Evening Steps)
-    // are evaluated and persisted to the database
-    await checkAndPersistDailyInsights({
-      userProfile: user,
-      userName,
-      vitalsData: adaptedVitals,
-      mealsData: todayMeals,
-      calorieTarget: calorieGoal,
-    }).catch(() => {});
+    // are evaluated and persisted to the database (only if meals were successfully fetched)
+    if (todayMeals !== null) {
+      await checkAndPersistDailyInsights({
+        userProfile: user,
+        userName,
+        vitalsData: adaptedVitals,
+        mealsData: todayMeals,
+        calorieTarget: calorieGoal,
+      }).catch(() => {});
+    }
 
     const smartCard = resolveContextualCard({
       userProfile: user,

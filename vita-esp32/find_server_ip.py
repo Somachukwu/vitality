@@ -26,6 +26,7 @@ STATION_CONFIG  = os.path.join(SCRIPT_DIR, "vita_station",  "config.h")
 # Defines whose IP portion will be replaced
 URL_DEFINES = (
     "SERVER_INGEST_URL",
+    "LOCAL_INGEST_URL",
     "SERVER_HEALTH_URL",
     "SERVER_DEVICE_STATUS_URL",
 )
@@ -81,7 +82,7 @@ def main():
 
     hostname = socket.gethostname()
     print(f"\n  Hostname  : {hostname}")
-    print(f"  Local IP  : {ip}   ← this will be written to config.h")
+    print(f"  Local IP  : {ip}   <- this will be written to config.h")
     print()
     print("  Patching config.h files:")
     patch_config(WEARABLE_CONFIG, ip)

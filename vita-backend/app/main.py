@@ -39,7 +39,7 @@ async def _keep_alive_task():
         return
 
     health_url = f"{url.rstrip('/')}/api/health"
-    print(f"INFO: Keep-alive service active. Target: {health_url} (every 14m)")
+    print(f"INFO: Keep-alive service active. Target: {health_url} (every 8m)")
 
     try:
         import httpx
@@ -49,8 +49,8 @@ async def _keep_alive_task():
 
     while True:
         try:
-            await asyncio.sleep(14 * 60)  # Wait 14 minutes
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            await asyncio.sleep(8 * 60)  # Wait 8 minutes (well before Render's 15m idle cutoff)
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 res = await client.get(health_url)
                 if res.status_code == 200:
                     print("INFO: Keep-alive ping successful.")
@@ -60,6 +60,7 @@ async def _keep_alive_task():
             break
         except Exception as exc:
             print(f"NOTICE: Keep-alive ping error: {exc}")
+            await asyncio.sleep(60)
 
 
 async def _google_health_auto_sync_task():

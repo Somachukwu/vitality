@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 //  VITA SCALE CALIBRATOR — HX711 Calibration Sketch
 //  Flash this ONCE to find SCALE_OFFSET and SCALE_FACTOR.
 //  Then copy both values into vita_station/config.h and
@@ -34,8 +34,8 @@
 #include <HX711.h>
 
 // ── Pin config — must match HX711_DOUT_PIN / HX711_SCK_PIN in config.h ──
-#define DOUT_PIN  3
-#define SCK_PIN   2
+#define DOUT_PIN  19
+#define SCK_PIN   18
 
 // Internal sampling: read as fast as HX711 allows (~10 Hz)
 // Display/print: every DISPLAY_INTERVAL_MS (10 seconds)
@@ -70,6 +70,15 @@ void printBanner(const char* title) {
   printDivider();
 }
 
+String chipUID() {
+  uint64_t mac = ESP.getEfuseMac();
+  char buf[18];
+  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
+    (uint8_t)mac, (uint8_t)(mac >> 8),  (uint8_t)(mac >> 16),
+    (uint8_t)(mac >> 24), (uint8_t)(mac >> 32), (uint8_t)(mac >> 40));
+  return String(buf);
+}
+
 // ─────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
@@ -77,6 +86,10 @@ void setup() {
 
   Serial.println();
   printBanner("=== VITA SCALE CALIBRATOR  (HX711) ===");
+  Serial.println();
+  Serial.print("  Device UID : ");
+  Serial.println(chipUID());
+  Serial.println("  (Use this UID to register the device in Vitality)");
   Serial.println();
   Serial.println("Serial Monitor settings required:");
   Serial.println("  Baud : 115200");
