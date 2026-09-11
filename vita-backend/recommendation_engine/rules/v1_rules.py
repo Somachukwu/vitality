@@ -44,21 +44,21 @@ def _rule_safety_critical_spo2_action(facts: dict[str, Any]) -> Recommendation:
     )
 
 
-def _rule_safety_severe_deficit_action(facts: dict[str, Any]) -> Recommendation:
+def _rule_nutrition_severe_deficit_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
     return Recommendation(
-        category=Category.HEALTH_ALERT.value,
+        category=Category.NUTRITION.value,
         priority=Priority.HIGH,
-        tier=Tier.SAFETY,
-        rule_id="safety.severe_deficit",
-        title="Severe Calorie Deficit",
+        tier=Tier.PRIMARY_ACTION,
+        rule_id="nutrition.severe_deficit",
+        title="Severe Calorie Deficit Warning",
         message=(
             f"Your logged energy intake today is {s.total_calories:.0f} kcal against a target of "
             f"{s.calorie_target:.0f} kcal (a deficit of {abs(s.calorie_balance or 0):.0f} kcal). "
             "Extended extreme calorie deficits can impair recovery, metabolism, and immune function."
         ),
         evidence={"total_calories": s.total_calories, "target": s.calorie_target, "deficit": abs(s.calorie_balance or 0)},
-        action_data={"action_type": "nutrition_warning", "route": "food-log.html"},
+        action_data={"action_label": "Log Meal", "route": "food-log.html"},
         cooldown_days=1,
         confidence=0.9,
     )
@@ -75,20 +75,6 @@ SAFETY_RULES = [
         ),
         action=_rule_safety_critical_spo2_action,
         weight=100,
-        cooldown_days=1,
-    ),
-    Rule(
-        rule_id="safety.severe_deficit",
-        category=Category.HEALTH_ALERT.value,
-        tier=Tier.SAFETY,
-        condition=lambda f: (
-            _snapshot(f).meals_logged >= 2
-            and _snapshot(f).calorie_target is not None
-            and _snapshot(f).calorie_balance is not None
-            and (_snapshot(f).total_calories < 1000 or _snapshot(f).calorie_balance < -1200)
-        ),
-        action=_rule_safety_severe_deficit_action,
-        weight=90,
         cooldown_days=1,
     ),
 ]
@@ -383,6 +369,20 @@ V1_RULES = [
         action=_rule_vitals_anomaly_cluster_action,
         weight=55,
         cooldown_days=2,
+    ),
+    Rule(
+        rule_id="nutrition.severe_deficit",
+        category=Category.NUTRITION.value,
+        tier=Tier.PRIMARY_ACTION,
+        condition=lambda f: (
+            _snapshot(f).meals_logged >= 3
+            and _snapshot(f).calorie_target is not None
+            and _snapshot(f).calorie_balance is not None
+            and (_snapshot(f).total_calories < 1000 or _snapshot(f).calorie_balance < -1200)
+        ),
+        action=_rule_nutrition_severe_deficit_action,
+        weight=85,
+        cooldown_days=1,
     ),
 ]
 

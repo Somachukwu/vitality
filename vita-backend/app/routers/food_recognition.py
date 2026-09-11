@@ -7,7 +7,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -190,6 +190,7 @@ async def log_meal_from_photo(
     predicted_food_name: str | None = Form(None, description="Original predicted dish name from model"),
     prediction_confidence: float | None = Form(None, description="Original prediction confidence"),
     notes: str | None = Form(None),
+    background_tasks: BackgroundTasks = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -311,5 +312,9 @@ async def log_meal_from_photo(
 
     db.commit()
     db.refresh(meal)
+
+    from app.services.meal_insights import update_meal_insights_after_change
+    update_meal_insights_after_change(current_user.id, db, background_tasks)
+
     return meal
 

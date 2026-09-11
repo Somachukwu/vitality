@@ -96,8 +96,35 @@ def ingest_vitals(
     device: Device = Depends(get_device_from_api_key),
     db: Session = Depends(get_db),
 ):
-    """ESP32 calls this endpoint to push sensor readings."""
+    """ESP32 calls this endpoint to push sensor readings or send periodic heartbeat pings."""
     now = datetime.now(timezone.utc)
+    device.last_seen = now
+
+    has_sensor_data = (
+        (body.weight is not None and body.weight > 0)
+        or body.heart_rate is not None
+        or body.spo2 is not None
+        or body.temperature is not None
+        or body.steps is not None
+    )
+
+    if not has_sensor_data:
+        # Heartbeat / startup ping only — keep device last_seen fresh without inserting dummy vitals
+        db.commit()
+        latest_record = (
+            db.query(Vitals)
+            .filter(Vitals.user_id == device.user_id)
+            .order_by(Vitals.recorded_at.desc())
+            .first()
+        )
+        if latest_record:
+            return latest_record
+        return Vitals(
+            id=0,
+            user_id=device.user_id,
+            device_id=device.id,
+            recorded_at=now,
+        )
 
     # ── 1. Insert a new vitals record (preserves full history) ──────────
     record = Vitals(
@@ -116,9 +143,6 @@ def ingest_vitals(
     user = db.get(User, device.user_id)
     if user is not None and body.weight is not None:
         user.weight = body.weight
-
-    # ── 3. Stamp device last-seen ────────────────────────────────────────
-    device.last_seen = now
 
     db.commit()
     db.refresh(record)

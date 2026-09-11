@@ -214,23 +214,9 @@ bool sendPayload(const char* targetUrl, const String& jsonBody) {
   return success;
 }
 
-void postWeight(float weightKg) {
+void postPayloadUnified(const String& body, const char* description) {
   ensureWiFi();
-
-  if (isnan(weightKg)) {
-    Serial.println("[HTTP]  No valid weight to post — skipping");
-    return;
-  }
-
-  StaticJsonDocument<128> doc;
-  doc["weight"] = round(weightKg * 10.0f) / 10.0f;   // 1 decimal place
-
-  String ts = isoTimestamp();
-  if (ts.length()) doc["recorded_at"] = ts;
-
-  String body;
-  serializeJson(doc, body);
-  Serial.printf("[HTTP]  Payload: %s\n", body.c_str());
+  Serial.printf("[HTTP]  %s Payload: %s\n", description, body.c_str());
 
 #if BACKEND_SYNC_MODE == 1
   // DUAL POST: Cloud (Primary) + Local (Secondary)
@@ -239,9 +225,9 @@ void postWeight(float weightKg) {
   Serial.println("[Sync] Sending to Localhost backend (Secondary)...");
   bool localOk = sendPayload(LOCAL_INGEST_URL, body);
   if (cloudOk || localOk) {
-    Serial.println("[Sync] Weight delivery completed!");
+    Serial.printf("[Sync] %s delivery completed!\n", description);
   } else {
-    Serial.println("[Sync] Warning: Could not reach either backend.");
+    Serial.printf("[Sync] Warning: Could not reach either backend for %s.\n", description);
   }
 
 #elif BACKEND_SYNC_MODE == 2
@@ -265,6 +251,30 @@ void postWeight(float weightKg) {
   // Default: Cloud primary
   sendPayload(CLOUD_INGEST_URL, body);
 #endif
+}
+
+void postPing(const char* reason) {
+  StaticJsonDocument<128> doc;
+  doc["ping"] = true;
+  doc["online"] = true;
+  doc["type"] = reason;
+  String ts = isoTimestamp();
+  if (ts.length()) doc["recorded_at"] = ts;
+
+  String body;
+  serializeJson(doc, body);
+  postPayloadUnified(body, reason);
+}
+
+void postWeight(float weightKg) {
+  StaticJsonDocument<128> doc;
+  doc["weight"] = round(weightKg * 10.0f) / 10.0f;   // 1 decimal place
+  String ts = isoTimestamp();
+  if (ts.length()) doc["recorded_at"] = ts;
+
+  String body;
+  serializeJson(doc, body);
+  postPayloadUnified(body, "Weight Reading");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -337,12 +347,16 @@ void setup() {
   syncNTP();
   testBackendConnections();
 
+  // Send startup ping immediately so backend knows scale is ONLINE before reading weight
+  Serial.println("[Ping] Sending initial startup ping to backend...");
+  postPing("startup");
+
 #if ENABLE_HX711
   initHX711();
   if (scaleReady) {
-    Serial.println("[Scale] HX711 ready — will post weight every " + String(POST_INTERVAL_MS / 1000) + " s");
+    Serial.println("[Scale] HX711 ready — will post weight or heartbeat every " + String(POST_INTERVAL_MS / 1000) + " s");
   } else {
-    Serial.println("[Scale] HX711 not found — only WiFi/NTP active");
+    Serial.println("[Scale] HX711 not found — heartbeat pings will maintain online status");
   }
 #else
   Serial.println("[Scale] HX711 disabled (ENABLE_HX711=0 in config.h)");
@@ -367,10 +381,17 @@ void loop() {
 
 #if ENABLE_HX711
   float weight = NAN;
-  readWeight(weight);
-  postWeight(weight);
+  bool valid = readWeight(weight);
+  if (valid && !isnan(weight) && weight >= WEIGHT_MIN_KG) {
+    Serial.printf("[Scale] Valid weight detected: %.2f kg — sending to backend\n", weight);
+    postWeight(weight);
+  } else {
+    Serial.println("[Scale] No valid weight (scale empty or sub-threshold) — sending heartbeat ping...");
+    postPing("heartbeat");
+  }
 #else
-  Serial.println("[Loop]  HX711 disabled — nothing to post");
+  Serial.println("[Loop]  HX711 disabled — sending heartbeat ping");
+  postPing("heartbeat");
 #endif
 
   Serial.println("--------------------------------------------\n");

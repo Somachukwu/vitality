@@ -51,16 +51,41 @@ def list_devices(
     return db.query(Device).filter(Device.user_id == current_user.id).all()
 
 
+from datetime import datetime, timezone
+
+
 @router.get("/status")
 def device_status(
     device: Device = Depends(get_device_from_api_key),
+    db: Session = Depends(get_db),
 ):
     """ESP32 calls this (no JWT needed) to confirm its API key is valid.
     Returns 200 + device info if registered, 401 if not found / inactive."""
+    now = datetime.now(timezone.utc)
+    device.last_seen = now
+    db.commit()
     return {
         "ok": True,
         "device_name": device.device_name,
         "device_type": device.device_type,
+        "last_seen": now.isoformat(),
+    }
+
+
+@router.api_route("/ping", methods=["GET", "POST"])
+def ping_device(
+    device: Device = Depends(get_device_from_api_key),
+    db: Session = Depends(get_db),
+):
+    """ESP32 calls this endpoint to announce it is online."""
+    now = datetime.now(timezone.utc)
+    device.last_seen = now
+    db.commit()
+    return {
+        "status": "online",
+        "device_name": device.device_name,
+        "device_type": device.device_type,
+        "last_seen": now.isoformat(),
     }
 
 
