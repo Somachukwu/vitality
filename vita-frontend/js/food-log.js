@@ -174,41 +174,53 @@ function renderResult(d) {
 
   initLucide();
 
-  document.getElementById('confirm-btn').addEventListener('click', async () => {
-    const hour = new Date().getHours();
-    const mealType = hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 19 ? 'dinner' : 'snack';
-    
-    let chosenFood = document.getElementById('food-search')?.value?.trim();
-    if (!chosenFood && d.isAmbiguous) {
-      return toast('Please select or type a food name to add to log.', 'error');
-    }
-    if (!chosenFood && d.detectedFoods?.[0]?.name) {
-      chosenFood = d.detectedFoods[0].name;
-    }
+  const confirmBtn = document.getElementById('confirm-btn');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', async () => {
+      if (confirmBtn.disabled) return;
 
-    try {
-      const formData = new FormData();
-      if (d.imageUrl) {
-        formData.append('image_url', d.imageUrl);
-        if (chosenFood) {
-          formData.append('food_name', chosenFood.toLowerCase().replace(/ /g, '_'));
-        }
-      } else if (selectedFile) {
-        formData.append('file', selectedFile);
-        if (chosenFood) {
-          formData.append('food_name', chosenFood.toLowerCase().replace(/ /g, '_'));
-        }
+      const hour = new Date().getHours();
+      const mealType = hour < 11 ? 'breakfast' : hour < 15 ? 'lunch' : hour < 19 ? 'dinner' : 'snack';
+      
+      let chosenFood = document.getElementById('food-search')?.value?.trim();
+      if (!chosenFood && d.isAmbiguous) {
+        return toast('Please select or type a food name to add to log.', 'error');
       }
-      formData.append('meal_type', mealType);
-      formData.append('portion_multiplier', String(d.multiplier));
-      await api.postForm('/food/log', formData);
-      await loadMeals();
-      toast('Meal added to your log');
-      document.getElementById('clear-btn').click();
-    } catch (err) {
-      toast('Could not save meal: ' + err.message, 'error');
-    }
-  });
+      if (!chosenFood && d.detectedFoods?.[0]?.name) {
+        chosenFood = d.detectedFoods[0].name;
+      }
+
+      const originalHtml = confirmBtn.innerHTML;
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '<span style="display:inline-block; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.7s linear infinite; vertical-align:middle; margin-right:6px"></span>Adding to log…';
+
+      try {
+        const formData = new FormData();
+        if (d.imageUrl) {
+          formData.append('image_url', d.imageUrl);
+          if (chosenFood) {
+            formData.append('food_name', chosenFood.toLowerCase().replace(/ /g, '_'));
+          }
+        } else if (selectedFile) {
+          formData.append('file', selectedFile);
+          if (chosenFood) {
+            formData.append('food_name', chosenFood.toLowerCase().replace(/ /g, '_'));
+          }
+        }
+        formData.append('meal_type', mealType);
+        formData.append('portion_multiplier', String(d.multiplier));
+        await api.postForm('/food/log', formData);
+        await loadMeals();
+        toast('Meal added to your log');
+        document.getElementById('clear-btn').click();
+      } catch (err) {
+        toast('Could not save meal: ' + err.message, 'error');
+        confirmBtn.disabled = false;
+        confirmBtn.innerHTML = originalHtml;
+        initLucide();
+      }
+    });
+  }
 
   const correctBtn = document.getElementById('correct-btn');
   if (correctBtn) {
