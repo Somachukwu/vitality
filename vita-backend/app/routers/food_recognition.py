@@ -25,24 +25,6 @@ MAX_IMAGE_BYTES = 25 * 1024 * 1024  # 25 MB
 VALID_MEAL_TYPES = {"breakfast", "lunch", "dinner", "snack"}
 
 
-def _load_recognizer():
-    """Lazy-import TensorFlow so the server starts even before the model is trained."""
-    try:
-        from food_cv.inference import recognize_food
-        return recognize_food
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Food recognition model not found. "
-                "Train it first: python -m food_cv.train"
-            ),
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Food recognition model not ready: {exc}",
-        )
 
 
 def _validate_image(file: UploadFile) -> None:
@@ -107,17 +89,39 @@ class AnalyzeResult:
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.get("/model-status")
-async def get_model_status(current_user: User = Depends(get_current_user)):
+async def get_model_status():
     """
-    Returns whether the food recognition AI model has finished loading.
-    The frontend polls this on the food-log page to show/hide a loading indicator.
-    Model loads in the background after server boot — usually ready within 15-30s.
+    Returns whether the food recognition AI model is ready.
+    Food recognition runs client-side on user devices for instant inference.
     """
-    from food_cv.inference import _model_ready
     return {
-        "ready": _model_ready,
-        "message": "Model ready" if _model_ready else "AI model is warming up, please wait…",
+        "ready": True,
+        "client_side": True,
+        "message": "On-device AI model ready",
     }
+
+
+@router.get("/nutrition/{food_name}")
+def get_nutrition_info(food_name: str):
+    """Lookup nutritional data (calories, macros, serving description) for a Nigerian dish."""
+    from food_cv.nutrition_lookup import get_nutrition
+    dish = food_name.strip()
+    try:
+        n = get_nutrition(dish)
+        return {
+            "food_name": dish,
+            "calories": n.calories,
+            "protein_g": n.protein_g,
+            "carbs_g": n.carbs_g,
+            "fat_g": n.fat_g,
+            "fiber_g": n.fiber_g,
+            "serving_description": n.serving_description,
+        }
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No nutrition data found for '{food_name}'.",
+        )
 
 
 @router.post("/analyze")
@@ -126,26 +130,10 @@ async def analyze_food_photo(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Step 1 of the meal-logging flow.
-
-    Upload a photo → get back the recognised dish, estimated calories, macros, and image_url.
-    Nothing is saved to the database yet — call POST /food/log to persist the meal.
+    Upload a photo → saves to Cloudinary / storage and returns image_url.
+    ML inference is executed client-side on user devices for speed and privacy.
     """
-    # Check if the AI model has finished loading in the background warmup task.
-    # If not ready yet, return a friendly 503 so the frontend can retry in a few seconds.
-    from food_cv.inference import _model_ready
-    if not _model_ready:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "The food recognition AI is still warming up. "
-                "Please wait a few seconds and try again."
-            ),
-            headers={"Retry-After": "5"},
-        )
-
     _validate_image(file)
-    recognize_food = _load_recognizer()
 
     image_bytes = await file.read()
     if len(image_bytes) > MAX_IMAGE_BYTES:
@@ -156,28 +144,11 @@ async def analyze_food_photo(
     save_path = UPLOADS_DIR / filename
     save_path.write_bytes(image_bytes)
 
-    try:
-        result = recognize_food(str(save_path))
-    except KeyError as exc:
-        save_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=422, detail=str(exc))
-    except Exception as exc:
-        save_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
-
-    # Asynchronously upload to Cloudinary or fall back to local static URL
     cloud_url = await _upload_to_cloudinary(str(save_path))
     if cloud_url:
-        result["image_url"] = cloud_url
         save_path.unlink(missing_ok=True)
-    else:
-        result["image_url"] = f"/uploads/meals/{filename}"
-
-    # Flag uncertain matches (< 55% confidence) for the UI
-    confidence = result.get("confidence", 1.0)
-    result["uncertain_match"] = bool(confidence < 0.55)
-
-    return result
+        return {"image_url": cloud_url, "client_side_inference": True}
+    return {"image_url": f"/uploads/meals/{filename}", "client_side_inference": True}
 
 
 @router.post("/log", response_model=MealOut, status_code=status.HTTP_201_CREATED)
@@ -207,9 +178,7 @@ async def log_meal_from_photo(
     if not (0.1 <= portion_multiplier <= 10.0):
         raise HTTPException(status_code=422, detail="portion_multiplier must be between 0.1 and 10")
 
-    recognize_food = _load_recognizer()
     final_image_url = image_url
-    result = None
 
     if file and file.filename:
         _validate_image(file)
@@ -221,12 +190,6 @@ async def log_meal_from_photo(
         filename = f"{uuid.uuid4().hex}{ext}"
         save_path = UPLOADS_DIR / filename
         save_path.write_bytes(image_bytes)
-
-        try:
-            result = recognize_food(str(save_path))
-        except Exception as exc:
-            save_path.unlink(missing_ok=True)
-            raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
 
         if not final_image_url:
             cloud_url = await _upload_to_cloudinary(str(save_path))
@@ -246,24 +209,34 @@ async def log_meal_from_photo(
                 final_image_url = cloud_url
                 local_path.unlink(missing_ok=True)
 
-    # If user provided a food_name override or if result is missing/ambiguous, lookup nutrition for the specified food
-    if food_name or not result or result.get("is_ambiguous") or not result.get("food_name"):
-        from food_cv.nutrition_lookup import get_nutrition
-        dish = (food_name or "").strip()
-        if not dish:
-            raise HTTPException(
-                status_code=422,
-                detail="The food could not be recognized with >=55% confidence. Please select or enter the food name.",
-            )
+    from food_cv.nutrition_lookup import get_nutrition
+    dish = (food_name or predicted_food_name or "").strip()
+    if not dish:
+        raise HTTPException(
+            status_code=422,
+            detail="Please provide or select a food name.",
+        )
+    try:
         nutrition = get_nutrition(dish)
-        result = {
-            "food_name": dish,
-            "calories": nutrition.calories,
-            "protein_g": nutrition.protein_g,
-            "carbs_g": nutrition.carbs_g,
-            "fat_g": nutrition.fat_g,
-            "serving_description": nutrition.serving_description,
-        }
+    except KeyError:
+        from food_cv.nutrition_lookup import NutritionInfo
+        nutrition = NutritionInfo(
+            calories=200.0,
+            protein_g=5.0,
+            carbs_g=30.0,
+            fat_g=5.0,
+            fiber_g=2.0,
+            serving_description="1 portion"
+        )
+
+    result = {
+        "food_name": dish,
+        "calories": nutrition.calories,
+        "protein_g": nutrition.protein_g,
+        "carbs_g": nutrition.carbs_g,
+        "fat_g": nutrition.fat_g,
+        "serving_description": nutrition.serving_description,
+    }
 
     pm = portion_multiplier
     now = datetime.now(timezone.utc)

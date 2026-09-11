@@ -14,22 +14,6 @@ from app.models import Device, GoogleHealthToken, Meal, MealItem, Recommendation
 from app.routers import auth, devices, food_recognition, meals, recommendations, users, vitals, google_health
 
 
-async def _warmup_model_task():
-    """Background task: pre-warm food recognition AI model in RAM and compile graph without blocking server boot."""
-    def _warmup():
-        try:
-            import numpy as np
-            from food_cv import config
-            from food_cv.inference import _load_model
-            model, _ = _load_model()
-            # Feed a single dummy batch to trigger TensorFlow kernel compilation
-            dummy_batch = np.zeros((1, config.IMAGE_SIZE[0], config.IMAGE_SIZE[1], 3), dtype=np.float32)
-            model.predict(dummy_batch, verbose=0)
-            print("INFO: Food recognition AI model pre-warmed and computational graph compiled in RAM.")
-        except Exception as exc:
-            print("NOTICE: Food recognition model warmup skipped:", exc)
-
-    await asyncio.to_thread(_warmup)
 
 
 async def _keep_alive_task():
@@ -97,8 +81,6 @@ async def _google_health_auto_sync_task():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-warm AI model asynchronously on startup so first request has zero cold-start delay
-    asyncio.create_task(_warmup_model_task())
     keep_alive = asyncio.create_task(_keep_alive_task())
     auto_sync = asyncio.create_task(_google_health_auto_sync_task())
     yield
@@ -224,6 +206,13 @@ app.include_router(google_health.router, prefix="/api")
 
 # Serve uploaded meal images as static files at /uploads/meals/<filename>
 app.mount("/uploads", StaticFiles(directory=str(settings.uploads_dir)), name="uploads")
+
+# Serve on-device AI models if hosted with backend
+models_dir = Path(__file__).resolve().parent.parent.parent / "vita-frontend" / "models"
+if not models_dir.exists():
+    models_dir = Path(__file__).resolve().parent.parent / "models"
+if models_dir.exists():
+    app.mount("/models", StaticFiles(directory=str(models_dir)), name="models")
 
 
 @app.get("/api/health")
