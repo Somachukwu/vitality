@@ -188,8 +188,8 @@ function renderDevices() {
   host.innerHTML = devices.map((device) => {
     const online = isOnline(device);
     const onlineBadge = online
-      ? '<span class="badge badge-success">● Online</span>'
-      : '<span class="badge badge-warning" style="color:#b91c1c">● Offline</span>';
+      ? '<span class="badge badge-success">&#9679;<span class="hide-mobile"> Online</span></span>'
+      : '<span class="badge badge-warning" style="color:#b91c1c">&#9679;<span class="hide-mobile"> Offline</span></span>';
 
     return `
     <div class="list-item">
@@ -201,7 +201,6 @@ function renderDevices() {
       </div>
       <div class="row gap-sm flex-wrap" style="justify-content:flex-end; align-items:center">
         ${onlineBadge}
-        <span class="badge ${device.is_active ? 'badge-success' : 'badge-warning'}">${device.is_active ? 'Active' : 'Inactive'}</span>
         <button class="btn btn-ghost text-xs" type="button" data-device-key="${device.id}">API key</button>
         <button class="btn btn-ghost text-xs" type="button" data-device-delete="${device.id}" style="color:#b91c1c">Delete</button>
       </div>
