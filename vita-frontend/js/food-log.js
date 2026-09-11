@@ -84,16 +84,26 @@ async function initOnDeviceModel() {
     try {
       if (ort.env && ort.env.wasm) {
         ort.env.wasm.numThreads = 1;
-        ort.env.wasm.simd = true;
+        // Critical for mobile: Explicitly point to CDN for wasm binaries to prevent 404
+        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+        ort.env.wasm.proxy = false;
       }
       const modelUrl = new URL('models/food_classifier/food_classifier.onnx', window.location.href).href;
-      ortSession = await ort.InferenceSession.create(modelUrl, {
-        executionProviders: ['wasm', 'webgl']
-      });
+
+      // Use 'wasm' provider which is universally supported on all iOS and Android devices
+      try {
+        ortSession = await ort.InferenceSession.create(modelUrl, {
+          executionProviders: ['wasm']
+        });
+      } catch (wasmErr) {
+        console.warn('Wasm provider init error, falling back to default:', wasmErr);
+        ortSession = await ort.InferenceSession.create(modelUrl);
+      }
+
       console.log('On-device food recognition model loaded successfully.');
       return ortSession;
     } catch (err) {
-      console.warn('Could not load on-device ONNX model:', err);
+      console.error('Could not load on-device ONNX model:', err);
       return null;
     } finally {
       modelLoadingPromise = null;
@@ -107,9 +117,24 @@ async function initOnDeviceModel() {
 initOnDeviceModel();
 
 async function runOnDeviceInference(imgElement) {
-  const session = await initOnDeviceModel();
+  let session = ortSession;
   if (!session) {
-    throw new Error('On-device AI model is not available.');
+    const sub = document.getElementById('overlay-sub');
+    if (sub) sub.textContent = 'Preparing AI scanner for offline use…';
+    session = await initOnDeviceModel();
+  }
+  if (!session) {
+    throw new Error('On-device AI model could not be loaded. Please check your internet connection on first use.');
+  }
+
+  const sub = document.getElementById('overlay-sub');
+  if (sub) sub.textContent = 'Scanning meal on your device…';
+
+  // Ensure image element is fully decoded and loaded
+  if (imgElement.decode) {
+    try {
+      await imgElement.decode();
+    } catch (_) {}
   }
 
   const canvas = document.createElement('canvas');
@@ -216,21 +241,9 @@ document.getElementById('analyze-btn').addEventListener('click', async () => {
   const multiplier = Math.max(0.25, parseFloat(document.getElementById('portion-size').value) || 1);
   overlay.classList.remove('hidden');
   try {
-    let food_name = null;
-    let confidence = 0;
-
-    try {
-      const pred = await runOnDeviceInference(preview);
-      food_name = pred.food_name;
-      confidence = pred.confidence;
-    } catch (localErr) {
-      console.warn('On-device inference fallback:', localErr);
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      const r = await api.postForm('/food/analyze', formData);
-      food_name = r.food_name;
-      confidence = r.confidence || 0;
-    }
+    const pred = await runOnDeviceInference(preview);
+    const food_name = pred.food_name;
+    const confidence = pred.confidence;
 
     const isAmbiguous = Boolean(!food_name || confidence < 0.55);
     const nutrition = getDishNutrition(food_name);
