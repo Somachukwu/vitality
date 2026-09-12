@@ -1,60 +1,49 @@
 // =============================================================================
-//  VITA STATION — HX711 Hardware Signal Smoke Test
-//  
-//  Use this sketch to test if your HX711 ADC and load cells are physically
-//  connected, powered, and sending real 24-bit signals to the ESP32.
+//  VITA STATION — Standalone Weight Measurement Test (No WiFi / No Backend)
 //
-//  Hardware Pinout (matches vita_station/config.h):
+//  Measures real-world weights in kilograms (kg) using your HX711 and load cell.
+//  No Wi-Fi, no backend, no networking — pure scale telemetry.
+//
+//  Hardware Pinout:
 //    • ESP32 GPIO 19 ----> HX711 DOUT
 //    • ESP32 GPIO 18 ----> HX711 SCK
 //    • ESP32 GPIO 2  ----> Onboard Status LED
-//    • ESP32 5V (VIN) ---> HX711 VCC (Must be 5V, 3.3V often causes failure)
+//    • ESP32 5V (VIN) ---> HX711 VCC (Must be 5V)
 //    • ESP32 GND     ----> HX711 GND
 //
-//  Load Cell Wiring to HX711:
-//    • Red   ----> E+ (Excitation +)
-//    • Black ----> E- (Excitation -)
-//    • White ----> A- (Signal -)
-//    • Green ----> A+ (Signal +)
-//
-//  Instructions:
-//    1. Open Arduino IDE and select your ESP32 board.
-//    2. Ensure "HX711 Arduino Library" by bogde is installed.
-//    3. Upload this sketch.
-//    4. Open Serial Monitor at 115200 baud.
-//    5. Watch the live raw values and press on the scale with your hand.
+//  Serial Commands (type in Serial Monitor and press Enter):
+//    • 't' -> Tare / Zero the scale (make sure scale is empty)
+//    • Any number (e.g. "5.0") -> Calibrate with known weight in kg
 // =============================================================================
 
 #include <Arduino.h>
 #include <HX711.h>
 
+// Pins (matches vita_station/config.h)
 #define DOUT_PIN 19
 #define SCK_PIN  18
 #define LED_PIN  2
 
+// Calibration parameters from vita_station/config.h
+#define DEFAULT_SCALE_FACTOR  20982.1289f
+#define DEFAULT_SCALE_OFFSET  222644L
+
+// Sampling
+#define SAMPLES_PER_READ      5       // Number of readings averaged per cycle
+#define REFRESH_INTERVAL_MS   500UL   // Update display every 500ms
+#define EMPTY_THRESHOLD_KG    0.5f    // Below this is considered empty scale
+
 HX711 scale;
 
-// Baseline tracking for pressure detection
-long baselineRaw = 0;
-bool baselineSet = false;
-unsigned long readCount = 0;
-unsigned long lastHzCheck = 0;
-int readsThisSecond = 0;
-float currentHz = 0.0;
+float scaleFactor = DEFAULT_SCALE_FACTOR;
+long  scaleOffset = DEFAULT_SCALE_OFFSET;
 
-void printTroubleshootingHelp(const char* reason) {
-  Serial.println("\n-------------------------------------------------------------");
-  Serial.printf(" [DIAGNOSTIC ALERT] %s\n", reason);
-  Serial.println("-------------------------------------------------------------");
-  Serial.println(" Common Causes & Fixes:");
-  Serial.println("  1. Power: Make sure HX711 VCC is wired to 5V (VIN), NOT 3.3V.");
-  Serial.println("  2. Pins: Verify DOUT -> GPIO 19 and SCK -> GPIO 18.");
-  Serial.println("  3. DOUT Stuck HIGH: No power to HX711, or DOUT wire disconnected.");
-  Serial.println("  4. DOUT Stuck LOW: Short to GND on DOUT or damaged module.");
-  Serial.println("  5. Saturated at +/-8388607 or 0: Load cell wires disconnected");
-  Serial.println("     (Check Red=E+, Black=E-, White=A-, Green=A+).");
-  Serial.println("-------------------------------------------------------------\n");
-}
+// Stability detection (like a commercial bathroom scale)
+float lastWeightKg = 0.0f;
+int   stableCount  = 0;
+bool  isLocked     = false;
+float lockedWeight = 0.0f;
+unsigned long lastPrintMs = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -65,142 +54,139 @@ void setup() {
 
   Serial.println();
   Serial.println("=============================================================");
-  Serial.println("   VITA STATION — HX711 SIGNAL SMOKE TEST");
+  Serial.println("     VITA SCALE — REAL WEIGHT MEASUREMENT (STANDALONE)       ");
   Serial.println("=============================================================");
-  Serial.printf("  Pins Configured: DOUT = GPIO %d | SCK = GPIO %d | LED = GPIO %d\n", DOUT_PIN, SCK_PIN, LED_PIN);
+  Serial.printf(" Pins        : DOUT=GPIO%d, SCK=GPIO%d, LED=GPIO%d\n", DOUT_PIN, SCK_PIN, LED_PIN);
+  Serial.printf(" Scale Factor: %.4f\n", scaleFactor);
+  Serial.printf(" Scale Offset: %ld\n", scaleOffset);
+  Serial.println("-------------------------------------------------------------");
+  Serial.println(" Commands:");
+  Serial.println("   Type 't' and press Enter to TARE (Zero) the scale.");
+  Serial.println("   Type a known weight in kg (e.g. 5.0) to calibrate.");
   Serial.println("=============================================================\n");
 
-  // Step 1: Direct GPIO state test before library takes over
-  Serial.println("[STEP 1] Direct GPIO Probe:");
-  pinMode(DOUT_PIN, INPUT_PULLUP);
-  int initialDout = digitalRead(DOUT_PIN);
-  Serial.printf("         Raw DOUT logic level: %s\n", initialDout == HIGH ? "HIGH (Idle or Unconnected)" : "LOW (Ready / Pull-down)");
-
-  // Step 2: Initialize Bogde HX711 library
-  Serial.println("[STEP 2] Initializing HX711 Driver...");
+  Serial.print("[INIT] Connecting to HX711...");
   scale.begin(DOUT_PIN, SCK_PIN);
 
-  // Step 3: Wait for first signal transition (timeout 3500ms)
-  Serial.print("[STEP 3] Listening for HX711 DOUT conversion pulse");
-  unsigned long startWait = millis();
-  bool responsive = false;
-
-  while (millis() - startWait < 3500) {
-    if (scale.is_ready()) {
-      responsive = true;
-      break;
-    }
+  // Wait up to 3 seconds for HX711 ready
+  unsigned long start = millis();
+  while (!scale.is_ready() && millis() - start < 3000) {
     delay(100);
     Serial.print(".");
   }
 
-  if (responsive) {
-    Serial.printf(" READY! (Responded in %lu ms)\n", millis() - startWait);
-    Serial.println("\n >>> SUCCESS: The HX711 is actively pulsing and sending signals! <<<\n");
-    // Blink LED 3 times to signal success
-    for (int i = 0; i < 3; i++) {
-      digitalWrite(LED_PIN, HIGH); delay(100);
-      digitalWrite(LED_PIN, LOW);  delay(100);
+  if (!scale.is_ready()) {
+    Serial.println(" FAILED!");
+    Serial.println("\n[ERROR] HX711 is not responding. Check DOUT=19, SCK=18, VCC=5V.");
+    while (true) {
+      digitalWrite(LED_PIN, HIGH); delay(200);
+      digitalWrite(LED_PIN, LOW);  delay(200);
     }
-  } else {
-    Serial.println(" TIMEOUT!");
-    printTroubleshootingHelp("HX711 did not respond (DOUT pin never went LOW within 3.5 seconds).");
-    Serial.println("[INFO] Continuing loop to keep monitoring pin in case wires are reconnected...\n");
   }
 
-  Serial.println("=============================================================");
-  Serial.println(" LIVE 24-BIT SIGNAL MONITOR (Press your hand on the scale)");
-  Serial.println(" Format: Raw Value | Delta from Baseline | Signal Bar | Est. Hz");
-  Serial.println("=============================================================");
+  Serial.println(" READY!");
+
+  // Apply calibration factor and offset
+  scale.set_scale(scaleFactor);
+  scale.set_offset(scaleOffset);
+
+  // Prompt tare
+  Serial.println("[TARE] Performing initial tare with scale empty...");
+  scale.tare(10);
+  scaleOffset = scale.get_offset();
+  Serial.printf("[TARE] Zero baseline calibrated (Offset: %ld)\n\n", scaleOffset);
+
+  // Success blink
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_PIN, HIGH); delay(80);
+    digitalWrite(LED_PIN, LOW);  delay(80);
+  }
+
+  Serial.println("-------------------------------------------------------------");
+  Serial.println(" Step on the scale or place an object to measure weight:");
+  Serial.println("-------------------------------------------------------------\n");
 }
-
-// ── Print interval — 1000ms (1 second) so it is calm and easy to read ──────
-#define PRINT_INTERVAL_MS 1000UL
-
-// Accumulator for averaging across the 1-second window
-long rawSum = 0;
-long minRawInWindow = 0;
-long maxRawInWindow = 0;
-int windowSamples = 0;
-unsigned long lastPrintMs = 0;
 
 void loop() {
-  // Check for user input (type 't' and press enter to re-tare)
+  // ── Handle Serial commands ('t' for tare, or number for calibration) ─────
   if (Serial.available() > 0) {
-    char c = Serial.read();
-    if (c == 't' || c == 'T') {
-      if (windowSamples > 0) {
-        baselineRaw = rawSum / windowSamples;
-      }
-      Serial.println("\n-------------------------------------------------------------");
-      Serial.printf(" [TARE RESET] New baseline set to: %ld\n", baselineRaw);
-      Serial.println("-------------------------------------------------------------\n");
-    }
-  }
+    String input = Serial.readStringUntil('\n');
+    input.trim();
 
-  // Continuously read samples from HX711 as fast as they are ready
-  if (scale.is_ready()) {
-    long raw = scale.read();
-    readCount++;
-    readsThisSecond++;
-
-    if (!baselineSet) {
-      baselineRaw = raw;
-      baselineSet = true;
-      Serial.println("\n-------------------------------------------------------------");
-      Serial.printf(" [BASELINE CAPTURED] Initial tare baseline: %ld\n", baselineRaw);
-      Serial.println(" (Tip: Type 't' and press Enter at any time to re-zero the scale)");
-      Serial.println("-------------------------------------------------------------\n");
-      lastPrintMs = millis();
-    }
-
-    if (windowSamples == 0) {
-      minRawInWindow = raw;
-      maxRawInWindow = raw;
+    if (input.equalsIgnoreCase("t")) {
+      Serial.println("\n>>> Taring scale... Please ensure nothing is on the scale! <<<");
+      scale.tare(15);
+      scaleOffset = scale.get_offset();
+      isLocked = false;
+      stableCount = 0;
+      Serial.printf(">>> ZERO TARE COMPLETE (New Offset: %ld) <<<\n\n", scaleOffset);
     } else {
-      if (raw < minRawInWindow) minRawInWindow = raw;
-      if (raw > maxRawInWindow) maxRawInWindow = raw;
+      float knownKg = input.toFloat();
+      if (knownKg > 0.1f) {
+        Serial.printf("\n>>> Calibrating with known weight: %.2f kg... <<<\n", knownKg);
+        long rawDiff = scale.read_average(15) - scaleOffset;
+        scaleFactor = (float)rawDiff / knownKg;
+        scale.set_scale(scaleFactor);
+        isLocked = false;
+        stableCount = 0;
+        Serial.printf(">>> NEW SCALE FACTOR: %.4f <<<\n", scaleFactor);
+        Serial.printf(">>> Update config.h: #define SCALE_FACTOR %.4ff <<<\n\n", scaleFactor);
+      }
     }
-    rawSum += raw;
-    windowSamples++;
-
-    // Brief LED flash for hardware signal confirmation
-    digitalWrite(LED_PIN, HIGH);
-    delayMicroseconds(500);
-    digitalWrite(LED_PIN, LOW);
   }
 
-  // Print a clean, calm summary line once every second
+  // ── Read weight periodically ─────────────────────────────────────────────
   unsigned long now = millis();
-  if (now - lastPrintMs >= PRINT_INTERVAL_MS) {
-    if (windowSamples > 0) {
-      long avgRaw = rawSum / windowSamples;
-      long delta = avgRaw - baselineRaw;
-      long absDelta = abs(delta);
-      float sampleRate = (float)windowSamples * 1000.0f / (float)(now - lastPrintMs);
+  if (now - lastPrintMs >= REFRESH_INTERVAL_MS) {
+    lastPrintMs = now;
 
-      // Activity meter bar
-      char bar[15] = "          ";
-      int bars = min(10, (int)(absDelta / 20000L));
-      for (int b = 0; b < bars; b++) bar[b] = '=';
+    if (scale.is_ready()) {
+      float weightKg = scale.get_units(SAMPLES_PER_READ);
+      float weightLbs = weightKg * 2.20462f;
 
-      const char* statusStr = "IDLE (Scale Empty)";
-      if (absDelta > 30000) {
-        statusStr = delta > 0 ? ">>> PRESSURE DETECTED! <<<" : ">>> NEGATIVE LOAD / LIFT <<<";
-      } else if (absDelta > 8000) {
-        statusStr = "LIGHT TOUCH";
+      // Filter micro-noise near zero
+      if (abs(weightKg) < 0.10f) {
+        weightKg = 0.0f;
+        weightLbs = 0.0f;
       }
 
-      Serial.printf("[Avg Raw: %10ld] | Delta: %+8ld | [%-10s] | %4.1f sps | %s\n",
-                    avgRaw, delta, bar, sampleRate, statusStr);
+      // Check stability (variance < 0.25 kg between 500ms intervals)
+      if (abs(weightKg - lastWeightKg) < 0.25f && weightKg >= EMPTY_THRESHOLD_KG) {
+        stableCount++;
+      } else {
+        stableCount = 0;
+        if (abs(weightKg - lastWeightKg) > 0.8f) {
+          isLocked = false;
+        }
+      }
+      lastWeightKg = weightKg;
 
-      // Reset window
-      rawSum = 0;
-      windowSamples = 0;
+      // Lock weight if steady for 3 consecutive checks (1.5 seconds)
+      if (stableCount >= 3 && !isLocked) {
+        isLocked = true;
+        lockedWeight = weightKg;
+        // Lock notification blink
+        digitalWrite(LED_PIN, HIGH); delay(50); digitalWrite(LED_PIN, LOW); delay(50);
+        digitalWrite(LED_PIN, HIGH);
+      }
+
+      // ── Print display ───────────────────────────────────────────────────
+      if (weightKg < EMPTY_THRESHOLD_KG) {
+        // Scale is empty
+        digitalWrite(LED_PIN, LOW);
+        isLocked = false;
+        Serial.printf("[SCALE EMPTY]    0.00 kg  (  0.0 lbs)\n");
+      } else if (isLocked) {
+        // Weight is locked / stable
+        digitalWrite(LED_PIN, HIGH);
+        Serial.printf("[STABLE WEIGHT] *** %6.2f kg ***  (%5.1f lbs)  [LOCKED]\n", lockedWeight, lockedWeight * 2.20462f);
+      } else {
+        // Measuring / settling
+        digitalWrite(LED_PIN, HIGH);
+        Serial.printf("[MEASURING...]      %6.2f kg   (%5.1f lbs)\n", weightKg, weightLbs);
+      }
     } else {
-      Serial.println("[WAITING] No signal from HX711 in the last second... (Check wiring/VCC)");
+      Serial.println("[WAITING] HX711 busy or not ready...");
     }
-    lastPrintMs = now;
   }
 }
-
