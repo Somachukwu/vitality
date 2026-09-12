@@ -112,6 +112,8 @@ void setup() {
   Serial.println(" LIVE 24-BIT SIGNAL MONITOR (Press your hand on the scale)");
   Serial.println(" Format: Raw Value | Delta from Baseline | Signal Bar | Est. Hz");
   Serial.println("=============================================================");
+}
+
 // ── Print interval — 1000ms (1 second) so it is calm and easy to read ──────
 #define PRINT_INTERVAL_MS 1000UL
 
