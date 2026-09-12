@@ -1,6 +1,6 @@
 import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
-import { vitalsStatus, formatDate, toast, applyStoredTheme, initThemeToggle, waitForChart } from './utils.js';
+import { vitalsStatus, formatDate, toast, applyStoredTheme, initThemeToggle, waitForChart, setSyncingState } from './utils.js';
 import { api } from './api.js';
 
 applyStoredTheme();
@@ -374,31 +374,30 @@ async function render(days) {
 }
 
 async function syncNow() {
-  const syncBtn = document.getElementById('sync-btn');
-  const icon = syncBtn?.querySelector('i[data-lucide]');
-  if (syncBtn) syncBtn.disabled = true;
-  if (icon) icon.classList.add('spin');
+  setSyncingState(true);
   try {
     const result = await api.post('/vitals/sync-all', {});
     const rangeSelect = document.getElementById('range');
     const days = rangeSelect ? Number(rangeSelect.value) : 7;
     await render(days);
     if (result && result.google_synced) {
-      toast(`Synced ${result.synced_count} reading(s) from Google Health`);
+      toast(`Synced ${result.synced_count} data point(s) from Google Health`);
     } else {
-      toast('Vitals refreshed');
+      toast('Device readings refreshed');
     }
   } catch {
     toast('Sync failed — check connection', 'error');
   } finally {
-    if (syncBtn) syncBtn.disabled = false;
-    if (icon) icon.classList.remove('spin');
+    setSyncingState(false);
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+      window.lucide.createIcons();
+    }
   }
 }
 
 const syncBtn = document.getElementById('sync-btn');
 if (syncBtn) {
-  syncBtn.addEventListener('click', syncNow);
+  syncBtn.addEventListener('click', () => syncNow());
 }
 
 document.getElementById('range').addEventListener('change', (e) => render(Number(e.target.value)));
