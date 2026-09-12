@@ -89,12 +89,28 @@ def _as_number(value: Any) -> float | None:
         return None
 
 
-def _latest_value(data_points: list[dict[str, Any]], data_key: str, value_key: str) -> float | None:
-    for point in reversed(data_points):
-        value = _as_number(point.get(data_key, {}).get(value_key))
-        if value is not None:
-            return value
-    return None
+def _extract_point_reading(point: dict[str, Any], data_key: str, value_key: str) -> tuple[float | None, datetime | None]:
+    val = _as_number(point.get(data_key, {}).get(value_key))
+    ts_str = (
+        (point.get(data_key, {}).get("sampleTime") or point.get("sampleTime") or {}).get("physicalTime")
+    )
+    dt = _parse_google_datetime(ts_str) if ts_str else None
+    return val, dt
+
+
+def _latest_reading(data_points: list[dict[str, Any]], data_key: str, value_key: str) -> tuple[float | None, datetime | None]:
+    """Return (value, timestamp) of the latest reading sorted by timestamp descending."""
+    candidates = []
+    for pt in data_points:
+        val, dt = _extract_point_reading(pt, data_key, value_key)
+        if val is not None:
+            candidates.append((dt or datetime.min, val))
+    if not candidates:
+        return None, None
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    latest_dt, latest_val = candidates[0]
+    return latest_val, (latest_dt if latest_dt != datetime.min else None)
+
 
 
 def _get_json(url: str, headers: dict[str, str], **kwargs: Any) -> dict[str, Any]:
@@ -176,57 +192,72 @@ def _fetch_daily_metrics(headers: dict[str, str], start: datetime, end: datetime
     return metrics
 
 
-def _fetch_latest_metrics(headers: dict[str, str], start: datetime, end: datetime) -> dict[str, float]:
-    """Retrieve VITALITY's point-in-time fields concurrently through the v4 list endpoint."""
+def _fetch_latest_metrics(headers: dict[str, str], start: datetime, end: datetime) -> dict[str, tuple[float, datetime | None]]:
+    """Retrieve VITALITY's point-in-time fields concurrently through the v4 list endpoint.
+
+    Returns dict mapping field_name -> (value, measurement_datetime_utc).
+    """
     from concurrent.futures import ThreadPoolExecutor
     start_iso = start.strftime("%Y-%m-%dT%H:%M:%SZ")
     end_iso = end.strftime("%Y-%m-%dT%H:%M:%SZ")
-    metrics: dict[str, float] = {}
+    metrics: dict[str, tuple[float, datetime | None]] = {}
 
-    def _get_hr():
-        hr_points = _list_data_points(headers, "heart-rate", f'heart_rate.sample_time.physical_time >= "{start_iso}" AND heart_rate.sample_time.physical_time < "{end_iso}"', page_size=20, max_pages=1)
+    def _get_hr() -> tuple[float | None, datetime | None]:
+        hr_points = _list_data_points(
+            headers, "heart-rate",
+            f'heart_rate.sample_time.physical_time >= "{start_iso}" AND heart_rate.sample_time.physical_time < "{end_iso}"',
+            page_size=100, max_pages=3
+        )
         if not hr_points:
-            hr_points = _list_data_points(headers, "heart-rate", "", page_size=20, max_pages=1)
-        hr_val = _latest_value(hr_points, "heartRate", "beatsPerMinute")
+            hr_points = _list_data_points(headers, "heart-rate", "", page_size=50, max_pages=1)
+        hr_val, hr_dt = _latest_reading(hr_points, "heartRate", "beatsPerMinute")
         if hr_val is None:
             rhr_points = _list_data_points(headers, "daily-resting-heart-rate", "", page_size=10, max_pages=1)
-            hr_val = _latest_value(rhr_points, "dailyRestingHeartRate", "beatsPerMinute") or _latest_value(rhr_points, "restingHeartRate", "beatsPerMinute")
-        return hr_val
+            hr_val, hr_dt = _latest_reading(rhr_points, "dailyRestingHeartRate", "beatsPerMinute")
+            if hr_val is None:
+                hr_val, hr_dt = _latest_reading(rhr_points, "restingHeartRate", "beatsPerMinute")
+        return hr_val, hr_dt
 
-    def _get_spo2():
-        spo2_points = _list_data_points(headers, "oxygen-saturation", f'oxygen_saturation.sample_time.physical_time >= "{start_iso}" AND oxygen_saturation.sample_time.physical_time < "{end_iso}"', page_size=20, max_pages=1)
+    def _get_spo2() -> tuple[float | None, datetime | None]:
+        spo2_points = _list_data_points(
+            headers, "oxygen-saturation",
+            f'oxygen_saturation.sample_time.physical_time >= "{start_iso}" AND oxygen_saturation.sample_time.physical_time < "{end_iso}"',
+            page_size=100, max_pages=3
+        )
         if not spo2_points:
-            spo2_points = _list_data_points(headers, "oxygen-saturation", "", page_size=20, max_pages=1)
-        spo2_val = _latest_value(spo2_points, "oxygenSaturation", "percentage")
+            spo2_points = _list_data_points(headers, "oxygen-saturation", "", page_size=50, max_pages=1)
+        spo2_val, spo2_dt = _latest_reading(spo2_points, "oxygenSaturation", "percentage")
         if spo2_val is None:
             d_spo2_points = _list_data_points(headers, "daily-oxygen-saturation", "", page_size=10, max_pages=1)
-            for point in reversed(d_spo2_points):
+            for point in d_spo2_points:
                 daily_data = point.get("dailyOxygenSaturation", {})
                 val = _as_number(daily_data.get("averagePercentage") or daily_data.get("percentage") or daily_data.get("lowerBoundPercentage"))
                 if val is not None:
-                    spo2_val = val
+                    ts_str = (daily_data.get("sampleTime") or point.get("sampleTime") or {}).get("physicalTime")
+                    dt = _parse_google_datetime(ts_str) if ts_str else None
+                    spo2_val, spo2_dt = val, dt
                     break
-        return spo2_val
+        return spo2_val, spo2_dt
 
-    def _get_temp():
+    def _get_temp() -> tuple[float | None, datetime | None]:
         temp_points = _list_data_points(headers, "core-body-temperature", "", page_size=10, max_pages=1)
-        return _latest_value(temp_points, "coreBodyTemperature", "temperatureCelsius")
+        return _latest_reading(temp_points, "coreBodyTemperature", "temperatureCelsius")
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         f_hr = executor.submit(_get_hr)
         f_spo2 = executor.submit(_get_spo2)
         f_temp = executor.submit(_get_temp)
 
-        hr_res = f_hr.result()
-        spo2_res = f_spo2.result()
-        temp_res = f_temp.result()
+        hr_res, hr_dt = f_hr.result()
+        spo2_res, spo2_dt = f_spo2.result()
+        temp_res, temp_dt = f_temp.result()
 
     if hr_res is not None:
-        metrics["heart_rate"] = round(hr_res, 1)
+        metrics["heart_rate"] = (round(hr_res, 1), hr_dt)
     if spo2_res is not None:
-        metrics["spo2"] = round(spo2_res, 1)
+        metrics["spo2"] = (round(spo2_res, 1), spo2_dt)
     if temp_res is not None:
-        metrics["temperature"] = round(temp_res, 1)
+        metrics["temperature"] = (round(temp_res, 1), temp_dt)
 
     return metrics
 
@@ -237,7 +268,7 @@ def _fetch_all_hr_spo2_points(
     """Retrieve ALL individual heart-rate and SpO₂ samples within the window.
 
     Each returned dict has keys: heart_rate (float|None), spo2 (float|None),
-    recorded_at (datetime).  Used for continuous charting on the vitals page.
+    recorded_at (datetime). Used for continuous charting on the vitals page.
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -245,20 +276,26 @@ def _fetch_all_hr_spo2_points(
     end_iso = end.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     def _get_hr_points() -> list[dict[str, Any]]:
-        return _list_data_points(
+        pts = _list_data_points(
             headers, "heart-rate",
             f'heart_rate.sample_time.physical_time >= "{start_iso}" '
             f'AND heart_rate.sample_time.physical_time < "{end_iso}"',
-            page_size=100, max_pages=5,
+            page_size=100, max_pages=10,
         )
+        if not pts:
+            pts = _list_data_points(headers, "heart-rate", "", page_size=100, max_pages=3)
+        return pts
 
     def _get_spo2_points() -> list[dict[str, Any]]:
-        return _list_data_points(
+        pts = _list_data_points(
             headers, "oxygen-saturation",
             f'oxygen_saturation.sample_time.physical_time >= "{start_iso}" '
             f'AND oxygen_saturation.sample_time.physical_time < "{end_iso}"',
-            page_size=100, max_pages=5,
+            page_size=100, max_pages=10,
         )
+        if not pts:
+            pts = _list_data_points(headers, "oxygen-saturation", "", page_size=100, max_pages=3)
+        return pts
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         f_hr = executor.submit(_get_hr_points)
@@ -266,14 +303,16 @@ def _fetch_all_hr_spo2_points(
         hr_raw = f_hr.result()
         spo2_raw = f_spo2.result()
 
-    # Build timestamped HR points
+    min_ts = start.replace(tzinfo=None)
     continuous: list[dict[str, Any]] = []
+
+    # Build timestamped HR points
     for pt in hr_raw:
         hr_val = _as_number(pt.get("heartRate", {}).get("beatsPerMinute"))
         ts = _parse_google_datetime(
             (pt.get("heartRate", {}).get("sampleTime") or pt.get("sampleTime") or {}).get("physicalTime")
         )
-        if hr_val is not None and ts is not None:
+        if hr_val is not None and ts is not None and ts >= min_ts:
             continuous.append({"heart_rate": round(hr_val, 1), "spo2": None, "recorded_at": ts})
 
     # Build timestamped SpO₂ points
@@ -282,7 +321,7 @@ def _fetch_all_hr_spo2_points(
         ts = _parse_google_datetime(
             (pt.get("oxygenSaturation", {}).get("sampleTime") or pt.get("sampleTime") or {}).get("physicalTime")
         )
-        if spo2_val is not None and ts is not None:
+        if spo2_val is not None and ts is not None and ts >= min_ts:
             continuous.append({"heart_rate": None, "spo2": round(spo2_val, 1), "recorded_at": ts})
 
     # Sort by timestamp ascending
@@ -373,8 +412,27 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
         return {"synced_count": 0, "sleep_sessions_synced": 0}
 
     now = datetime.now(timezone.utc)
-    sync_start = now - timedelta(hours=hours_back)
+    _CONTINUOUS_SOURCE = "google_health_continuous"
+
+    # Adaptively calculate sync_start:
+    # Look back from the latest continuous point (minus 1h overlap), or default hours_back (min 72h),
+    # capped at a maximum lookback of 7 days to keep queries bounded.
+    latest_cont_row = db.query(Vitals.recorded_at).filter(
+        Vitals.user_id == user_id,
+        Vitals.source == _CONTINUOUS_SOURCE,
+    ).order_by(Vitals.recorded_at.desc()).first()
+
+    default_start = now - timedelta(hours=max(hours_back, 72))
+    max_lookback = now - timedelta(days=7)
+
+    if latest_cont_row and latest_cont_row[0]:
+        latest_ts = latest_cont_row[0].replace(tzinfo=timezone.utc) if latest_cont_row[0].tzinfo is None else latest_cont_row[0]
+        sync_start = max(min(latest_ts - timedelta(hours=1), default_start), max_lookback)
+    else:
+        sync_start = max(default_start, max_lookback)
+
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_naive = today_start.replace(tzinfo=None)
     headers = {"Authorization": f"Bearer {credentials.token}", "Accept": "application/json"}
 
     with ThreadPoolExecutor(max_workers=3) as executor:
@@ -382,29 +440,53 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
         f_latest = executor.submit(_fetch_latest_metrics, headers, sync_start, now)
         f_continuous = executor.submit(_fetch_all_hr_spo2_points, headers, sync_start, now)
 
-        metrics = f_daily.result()
-        metrics.update(f_latest.result())
+        daily_metrics = f_daily.result()
+        latest_metrics = f_latest.result()
         continuous_points = f_continuous.result()
 
     synced_count = 0
 
-    # ── 1. Upsert today's aggregate row (feeds dashboard "current" values) ───
-    if metrics:
-        record = db.query(Vitals).filter(
-            Vitals.user_id == user_id,
-            Vitals.source == _SOURCE,
-            Vitals.recorded_at >= today_start.replace(tzinfo=None),
-        ).first()
-        if not record:
-            record = Vitals(user_id=user_id, device_id=None, source=_SOURCE, recorded_at=now.replace(tzinfo=None))
-            db.add(record)
-        for field, value in metrics.items():
+    # ── 1. Upsert today's aggregate row (feeds daily summaries & dashboard) ───
+    # Note: daily metrics (steps, calories, distance, active minutes, floors) belong to today.
+    # Point-in-time metrics (heart_rate, spo2, temperature) are ONLY attached to today's aggregate row
+    # if they were actually recorded TODAY (>= today_start).
+    # If recorded on a previous day, they belong strictly to continuous/historical records,
+    # avoiding stamping a false heart rate with today's timestamp.
+    record = db.query(Vitals).filter(
+        Vitals.user_id == user_id,
+        Vitals.source == _SOURCE,
+        Vitals.recorded_at >= today_start_naive,
+    ).first()
+
+    has_valid_today_data = bool(daily_metrics) or any(
+        dt is not None and dt >= today_start_naive for _, dt in latest_metrics.values()
+    )
+
+    if not record and has_valid_today_data:
+        record = Vitals(user_id=user_id, device_id=None, source=_SOURCE, recorded_at=now.replace(tzinfo=None))
+        db.add(record)
+
+    if record:
+        for field, value in daily_metrics.items():
             setattr(record, field, value)
+        for field, (value, reading_dt) in latest_metrics.items():
+            if reading_dt and reading_dt >= today_start_naive:
+                setattr(record, field, value)
+            else:
+                # If there's an existing stale value from earlier bug on today's row, clear it
+                if getattr(record, field, None) is not None:
+                    has_today_reading = db.query(Vitals.id).filter(
+                        Vitals.user_id == user_id,
+                        Vitals.source == _CONTINUOUS_SOURCE,
+                        getattr(Vitals, field).isnot(None),
+                        Vitals.recorded_at >= today_start_naive,
+                    ).first()
+                    if not has_today_reading:
+                        setattr(record, field, None)
         record.recorded_at = now.replace(tzinfo=None)
-        synced_count = len(metrics)
+        synced_count += len(daily_metrics)
 
     # ── 2. Insert individual HR / SpO₂ readings for continuous charting ───────
-    _CONTINUOUS_SOURCE = "google_health_continuous"
     if continuous_points:
         # Fetch existing timestamps for this source to de-duplicate
         existing_ts = set(
@@ -438,4 +520,5 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
     db.commit()
     logger.info("Google Health sync complete: user_id=%s vitals=%s sleep_sessions=%s", user_id, synced_count, sleep_sessions_synced)
     return {"synced_count": synced_count, "sleep_sessions_synced": sleep_sessions_synced}
+
 

@@ -162,7 +162,7 @@ def _auto_sync_if_needed(user_id: int, db: Session, minutes: int = 15) -> Option
         if last_sync is None or last_sync < now_utc.replace(tzinfo=None) - timedelta(minutes=minutes):
             try:
                 from app.services.google_health_service import sync_google_health
-                sync_google_health(user_id=user_id, db=db, hours_back=24)
+                sync_google_health(user_id=user_id, db=db, hours_back=72)
                 db.refresh(token_row)
             except Exception:
                 pass  # non-blocking fallback
@@ -398,6 +398,9 @@ def get_vitals_continuous(
     Unlike /history which groups by day, this endpoint returns every recorded
     data point so the frontend can plot high-resolution time-series charts.
     """
+    # Auto-sync Google Health in background if connected and stale
+    _auto_sync_if_needed(current_user.id, db)
+
     if days <= 1:
         since = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=24)
     else:
@@ -414,6 +417,8 @@ def get_vitals_continuous(
         .filter(
             Vitals.user_id == current_user.id,
             Vitals.recorded_at >= since,
+            # Exclude daily rollup summaries (which have source 'google_health' and artificial timestamps)
+            Vitals.source != "google_health",
         )
         # At least one of HR or SpO₂ must be present
         .filter(

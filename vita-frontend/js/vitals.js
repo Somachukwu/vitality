@@ -128,6 +128,15 @@ function makeChart(id, label, data, color) {
   });
 }
 
+function parseTimestamp(raw) {
+  if (!raw) return new Date();
+  if (typeof raw !== 'string') return new Date(raw);
+  if (/[Z+-]\d{2}:?\d{2}$/.test(raw) || raw.endsWith('Z')) {
+    return new Date(raw);
+  }
+  return new Date(raw + 'Z');
+}
+
 /**
  * Build a Chart.js line chart for continuous (per-reading) data.
  * X-axis labels are datetime-aware with granularity based on range.
@@ -142,7 +151,7 @@ function makeContinuousChart(id, label, data, color, days) {
 
   const timeLabels = data.map(d => {
     const raw = d.recorded_at || '';
-    const dt = new Date(raw.endsWith('Z') ? raw : raw + 'Z');
+    const dt = parseTimestamp(raw);
     if (days <= 1) {
       return dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     } else if (days <= 7) {
@@ -364,6 +373,35 @@ async function render(days) {
   document.getElementById('last-sync').textContent = 'Updated ' + formatDate(new Date().toISOString());
 }
 
+async function syncNow() {
+  const syncBtn = document.getElementById('sync-btn');
+  const icon = syncBtn?.querySelector('i[data-lucide]');
+  if (syncBtn) syncBtn.disabled = true;
+  if (icon) icon.classList.add('spin');
+  try {
+    const result = await api.post('/vitals/sync-all', {});
+    const rangeSelect = document.getElementById('range');
+    const days = rangeSelect ? Number(rangeSelect.value) : 7;
+    await render(days);
+    if (result && result.google_synced) {
+      toast(`Synced ${result.synced_count} reading(s) from Google Health`);
+    } else {
+      toast('Vitals refreshed');
+    }
+  } catch {
+    toast('Sync failed — check connection', 'error');
+  } finally {
+    if (syncBtn) syncBtn.disabled = false;
+    if (icon) icon.classList.remove('spin');
+  }
+}
+
+const syncBtn = document.getElementById('sync-btn');
+if (syncBtn) {
+  syncBtn.addEventListener('click', syncNow);
+}
+
 document.getElementById('range').addEventListener('change', (e) => render(Number(e.target.value)));
 render(7);
+
 
