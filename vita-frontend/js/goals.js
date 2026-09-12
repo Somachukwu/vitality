@@ -38,25 +38,24 @@ function renderFieldChip(chipId, targetInputId, value, label, rationale) {
 }
 
 function computeSmartRecommendations() {
-  const curWeight = Number(profile.weight || 70);
   const userEnteredWeight = Number(document.getElementById('target_weight')?.value);
-  const weight = userEnteredWeight > 0 ? userEnteredWeight : curWeight;
-  const height = Number(profile.height || 170);
-  const age    = Number(profile.age || 30);
-  const sex    = (profile.sex || 'male').toLowerCase();
-  const isFemale = sex === 'female';
-  const goal   = document.getElementById('goal_type')?.value || profile.goal_type || 'maintenance';
-  const activity = document.getElementById('activity_level')?.value || 'moderate';
+  const curWeight = (profile.weight != null && Number(profile.weight) > 0)
+    ? Number(profile.weight)
+    : (userEnteredWeight > 0 ? userEnteredWeight : null);
 
-  // 1. Mifflin-St Jeor BMR
-  let bmr = 10 * curWeight + 6.25 * height - 5 * age;
-  if (isFemale) {
-    bmr -= 161;
-  } else {
-    bmr += 5;
-  }
+  const hasWeight = curWeight != null && curWeight > 0;
+  const hasHeight = profile.height != null && Number(profile.height) > 0;
+  const height    = hasHeight ? Number(profile.height) : null;
+  const hasAge    = profile.age != null && Number(profile.age) > 0;
+  const age       = hasAge ? Number(profile.age) : null;
 
-  // 2. Activity multipliers
+  const rawSex    = (profile.sex || 'male').toLowerCase();
+  const isFemale  = rawSex === 'female';
+  const sexLabel  = isFemale ? 'female' : 'male';
+  const goal      = document.getElementById('goal_type')?.value || profile.goal_type || 'maintenance';
+  const activity  = document.getElementById('activity_level')?.value || 'moderate';
+
+  // Activity multipliers
   const actMultipliers = {
     sedentary:   1.2,
     light:       1.375,
@@ -64,7 +63,6 @@ function computeSmartRecommendations() {
     very_active: 1.725,
   };
   const multiplier = actMultipliers[activity] || 1.55;
-  const tdee = Math.round(bmr * multiplier);
 
   const actLabel = {
     sedentary:   'sedentary',
@@ -73,98 +71,231 @@ function computeSmartRecommendations() {
     very_active: 'very active',
   }[activity] || 'moderate';
 
-  const sexLabel = isFemale ? 'female' : 'male';
+  // ── 1. Determine Personalization Tier ──────────────────────────────────────
+  const isFullyPersonalized = hasAge && hasWeight && hasHeight;
+  const refHeight = isFemale ? 162 : 175; // Standard gender reference height (cm)
+  const refWeight = isFemale ? 62 : 75;   // Standard gender reference weight (kg)
+  const refAge    = 30;                   // Standard adult reference age
 
-  // 3. Goal & Sex-specific target calculations
+  let tdee = 0;
+  let bmr = null;
+  let calRationale = '';
+  let statusBadge = '';
+  let personalizationSummary = '';
+
+  if (isFullyPersonalized) {
+    // ── Tier 1: Full Personalization (Mifflin-St Jeor with exact user stats) ──
+    bmr = 10 * curWeight + 6.25 * height - 5 * age + (isFemale ? -161 : 5);
+    tdee = Math.round(bmr * multiplier);
+    calRationale = `Calculated from your exact BMR (~${Math.round(bmr)} kcal) and ${actLabel} activity`;
+    statusBadge = `<span class="badge badge-success mb-1">✨ Fully Personalized</span>`;
+    personalizationSummary = `Personalized to your profile (Age: ${age}, Weight: ${curWeight} kg, Height: ${height} cm, ${sexLabel}).`;
+  } else if (hasWeight) {
+    // ── Tier 2A: Weight is known (dominant ~75% BMR factor), Age or Height missing ──
+    const effectiveHeight = hasHeight ? height : refHeight;
+    const effectiveAge    = hasAge ? age : refAge;
+    bmr = 10 * curWeight + 6.25 * effectiveHeight - 5 * effectiveAge + (isFemale ? -161 : 5);
+    tdee = Math.round(bmr * multiplier);
+
+    const missingParts = [];
+    if (!hasAge) missingParts.push('age');
+    if (!hasHeight) missingParts.push('height');
+
+    calRationale = `Calculated from your recorded weight (${curWeight} kg) & ${sexLabel} reference ${missingParts.join(' & ')}`;
+    statusBadge = `<span class="badge badge-warning mb-1">⚡ Partially Personalized</span>`;
+    personalizationSummary = `Using your actual weight (${curWeight} kg) and standard adult ${sexLabel} references for missing ${missingParts.join(' and ')}.`;
+  } else if (hasAge) {
+    // ── Tier 2B: Age is known, Weight is missing ──
+    let ageFactor = 1.0;
+    if (age < 25) ageFactor = 1.04;          // Younger adult metabolic rate
+    else if (age > 65) ageFactor = 0.90;     // Senior metabolic decline
+    else if (age > 50) ageFactor = 0.95;
+
+    const baseTdee = (isFemale ? 2000 : 2500) * (multiplier / 1.55);
+    tdee = Math.round(baseTdee * ageFactor);
+
+    calRationale = `Calibrated to your age (${age}) and standard adult ${sexLabel} guidelines`;
+    statusBadge = `<span class="badge badge-warning mb-1">⚡ Partially Personalized</span>`;
+    personalizationSummary = `Calibrated to your age (${age}) and ${sexLabel} dietary reference (weight not yet logged).`;
+  } else {
+    // ── Tier 3: General Gender Fallback (Neither Age nor Weight is set) ──
+    const baseTdee = (isFemale ? 2000 : 2500) * (multiplier / 1.55);
+    tdee = Math.round(baseTdee);
+
+    calRationale = `Standard adult ${sexLabel} baseline (${isFemale ? '2,000' : '2,500'} kcal maintenance)`;
+    statusBadge = `<span class="badge badge-info mb-1">ℹ️ General ${sexLabel.toUpperCase()} Guidelines</span>`;
+    personalizationSummary = `Using general adult ${sexLabel} health reference guidelines because age and body measurements are not set.`;
+  }
+
+  // ── 2. Goal Adjustments on Calorie Target ────────────────────────────────────
   let targetCal = tdee;
-  let calRationale = `Matches ${sexLabel} TDEE for balanced energy`;
-  let targetWeightRec = curWeight;
-  let weightRationale = `Maintain healthy current weight`;
-  let targetProtein = Math.round(curWeight * (isFemale ? 1.2 : 1.3));
-  let proteinRationale = `${isFemale ? '1.2' : '1.3'}g/kg for cellular repair`;
-  let targetCarbs = Math.round((tdee * 0.48) / 4);
-  let carbsRationale = `48% of cals for steady vitality`;
-  let targetFat = Math.round((tdee * (isFemale ? 0.30 : 0.28)) / 9);
-  let fatRationale = `${isFemale ? '30%' : '28%'} of cals for endocrine health`;
-  let targetSteps = isFemale ? 8000 : 8500;
-  let stepsRationale = `Cardiovascular & longevity baseline`;
-  let targetSleep = isFemale ? 8.0 : 7.5;
-  let sleepRationale = `Circadian restoration & mental focus`;
-  let targetWater = Number((curWeight * (isFemale ? 0.032 : 0.034)).toFixed(1));
-  let waterRationale = `${isFemale ? '32' : '34'}ml/kg fluid equilibrium`;
-  let overallRationale = '';
-
-  const heightM = height / 100;
-  const targetBmi = isFemale ? 22.0 : 23.0;
+  const floor = isFemale ? 1200 : 1500;
 
   if (goal === 'weight_loss') {
-    const floor = isFemale ? 1200 : 1500;
     targetCal = Math.max(floor, tdee - 500);
-    calRationale = `TDEE - 500 kcal deficit (safety floor: ${floor} kcal)`;
-
-    const idealWeight = Math.round(targetBmi * heightM * heightM * 10) / 10;
-    targetWeightRec = Math.min(curWeight, idealWeight > 30 ? idealWeight : Math.round(curWeight * 0.9 * 10) / 10);
-    weightRationale = `Target BMI ~${targetBmi} for sustainable fat loss`;
-
-    const proteinRatio = isFemale ? 1.6 : 1.8;
-    targetProtein = Math.round(curWeight * proteinRatio);
-    proteinRationale = `${proteinRatio}g/kg preserves lean muscle in deficit`;
-
-    targetCarbs = Math.round((targetCal * 0.38) / 4);
-    carbsRationale = `38% of cals for fat oxidation & energy`;
-
-    const fatPct = isFemale ? 0.28 : 0.25;
-    targetFat = Math.round((targetCal * fatPct) / 9);
-    fatRationale = `${Math.round(fatPct * 100)}% of cals for ${sexLabel} hormonal health`;
-
-    targetSteps = isFemale ? 10000 : 10500;
-    stepsRationale = `Elevated NEAT expenditure for fat loss`;
-
-    targetSleep = isFemale ? 8.5 : 8.0;
-    sleepRationale = `Regulates ghrelin appetite & lowers cortisol`;
-
-    targetWater = Number((curWeight * (isFemale ? 0.034 : 0.036) + 0.2).toFixed(1));
-    waterRationale = `Supports metabolic hydration & appetite control`;
-
-    overallRationale = `Based on your ${sexLabel} BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), a safe 500 kcal deficit targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong> for muscle retention, <strong>${targetSteps.toLocaleString()} steps</strong>, and <strong>${targetSleep}h sleep</strong>.`;
-
+    calRationale += ` — 500 kcal deficit (safe floor: ${floor} kcal)`;
   } else if (goal === 'weight_gain') {
     const surplus = isFemale ? 250 : 350;
     targetCal = tdee + surplus;
-    calRationale = `TDEE + ${surplus} kcal controlled lean surplus`;
-
-    const gainTargetBmi = isFemale ? 23.5 : 24.5;
-    const gainWeight = Math.round(gainTargetBmi * heightM * heightM * 10) / 10;
-    targetWeightRec = Math.max(curWeight, gainWeight > 30 ? gainWeight : Math.round(curWeight * 1.05 * 10) / 10);
-    weightRationale = `Lean mass target (+${isFemale ? '4%' : '5%'} progression)`;
-
-    const proteinRatio = isFemale ? 1.8 : 2.0;
-    targetProtein = Math.round(curWeight * proteinRatio);
-    proteinRationale = `${proteinRatio}g/kg maximizes muscle protein synthesis`;
-
-    targetCarbs = Math.round((targetCal * 0.52) / 4);
-    carbsRationale = `52% of cals to replenish muscle glycogen`;
-
-    const fatPct = isFemale ? 0.26 : 0.24;
-    targetFat = Math.round((targetCal * fatPct) / 9);
-    fatRationale = `${Math.round(fatPct * 100)}% of cals for hormone synthesis`;
-
-    targetSteps = isFemale ? 7000 : 7500;
-    stepsRationale = `Maintains conditioning without burning muscle fuel`;
-
-    targetSleep = isFemale ? 8.5 : 8.5;
-    sleepRationale = `Maximizes Growth Hormone & deep tissue recovery`;
-
-    targetWater = Number((curWeight * (isFemale ? 0.036 : 0.038) + 0.3).toFixed(1));
-    waterRationale = `Intramuscular hydration & recovery`;
-
-    overallRationale = `Based on your ${sexLabel} BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), a lean ${surplus} kcal surplus targets <strong>${targetCal} kcal/day</strong> with <strong>${targetProtein}g protein</strong> for hypertrophy and <strong>${targetSleep}h sleep</strong> for optimal growth.`;
-
+    calRationale += ` — ${surplus} kcal controlled surplus for lean growth`;
   } else {
-    // General Wellness / Maintenance
-    overallRationale = `Based on your ${sexLabel} BMR (~${Math.round(bmr)} kcal) and <strong>${actLabel}</strong> activity (TDEE ~${tdee} kcal), maintaining weight targets <strong>${targetCal} kcal/day</strong>, <strong>${targetProtein}g protein</strong>, and <strong>${targetSteps.toLocaleString()} steps/day</strong> for sustained vitality.`;
+    calRationale += ` — balanced maintenance energy`;
   }
 
+  // ── 3. Macronutrients (Protein, Carbs, Fat) ─────────────────────────────────
+  let targetProtein;
+  let proteinRationale;
+
+  if (hasWeight) {
+    let proteinRatio = isFemale ? 1.2 : 1.3;
+    if (hasAge && age >= 65) {
+      proteinRatio = isFemale ? 1.3 : 1.4; // Sarcopenia prevention in older adults
+    }
+    if (goal === 'weight_loss') {
+      proteinRatio = isFemale ? 1.6 : 1.8;
+    } else if (goal === 'weight_gain') {
+      proteinRatio = isFemale ? 1.8 : 2.0;
+    }
+    targetProtein = Math.round(curWeight * proteinRatio);
+    proteinRationale = `${proteinRatio}g/kg personalized to your ${curWeight} kg weight`;
+  } else {
+    // Gender reference standard (WHO / Dietary Guidelines for Americans)
+    if (goal === 'weight_loss') {
+      targetProtein = isFemale ? 110 : 150;
+    } else if (goal === 'weight_gain') {
+      targetProtein = isFemale ? 120 : 160;
+    } else {
+      targetProtein = isFemale ? 95 : 130;
+    }
+    proteinRationale = `Standard adult ${sexLabel} reference (${targetProtein}g for ${goal.replace('_', ' ')})`;
+  }
+
+  let targetCarbs;
+  let carbsRationale;
+  let targetFat;
+  let fatRationale;
+
+  if (goal === 'weight_loss') {
+    targetCarbs = Math.round((targetCal * 0.38) / 4);
+    carbsRationale = `38% of cals for fat oxidation & energy`;
+    const fatPct = isFemale ? 0.28 : 0.25;
+    targetFat = Math.round((targetCal * fatPct) / 9);
+    fatRationale = `${Math.round(fatPct * 100)}% of cals for ${sexLabel} hormonal balance`;
+  } else if (goal === 'weight_gain') {
+    targetCarbs = Math.round((targetCal * 0.52) / 4);
+    carbsRationale = `52% of cals to fuel glycogen & muscle hypertrophy`;
+    const fatPct = isFemale ? 0.26 : 0.24;
+    targetFat = Math.round((targetCal * fatPct) / 9);
+    fatRationale = `${Math.round(fatPct * 100)}% of cals for anabolic hormone synthesis`;
+  } else {
+    targetCarbs = Math.round((targetCal * 0.48) / 4);
+    carbsRationale = `48% of cals for steady all-day energy`;
+    const fatPct = isFemale ? 0.30 : 0.28;
+    targetFat = Math.round((targetCal * fatPct) / 9);
+    fatRationale = `${Math.round(fatPct * 100)}% of cals for metabolic & cellular health`;
+  }
+
+  // ── 4. Target Weight ────────────────────────────────────────────────────────
+  let targetWeightRec = curWeight || refWeight;
+  let weightRationale = '';
+
+  if (hasHeight) {
+    const heightM = height / 100;
+    let targetBmi = isFemale ? 22.0 : 23.0;
+    if (goal === 'weight_gain') targetBmi = isFemale ? 23.5 : 24.5;
+
+    const idealWeight = Math.round(targetBmi * heightM * heightM * 10) / 10;
+    if (goal === 'weight_loss' && hasWeight) {
+      targetWeightRec = Math.min(curWeight, idealWeight > 30 ? idealWeight : Math.round(curWeight * 0.9 * 10) / 10);
+      weightRationale = `Target BMI ~${targetBmi} for sustainable fat loss`;
+    } else if (goal === 'weight_gain' && hasWeight) {
+      targetWeightRec = Math.max(curWeight, idealWeight > 30 ? idealWeight : Math.round(curWeight * 1.05 * 10) / 10);
+      weightRationale = `Target BMI ~${targetBmi} (+${isFemale ? '4%' : '5%'} progression)`;
+    } else {
+      targetWeightRec = idealWeight;
+      weightRationale = `Ideal healthy BMI ~${targetBmi} for ${height} cm ${sexLabel}`;
+    }
+  } else if (hasWeight) {
+    if (goal === 'weight_loss') {
+      targetWeightRec = Math.round(curWeight * 0.9 * 10) / 10;
+      weightRationale = `Progressive 10% fat loss milestone from ${curWeight} kg`;
+    } else if (goal === 'weight_gain') {
+      targetWeightRec = Math.round(curWeight * 1.05 * 10) / 10;
+      weightRationale = `Progressive 5% lean mass milestone from ${curWeight} kg`;
+    } else {
+      targetWeightRec = curWeight;
+      weightRationale = `Maintain your current healthy ${curWeight} kg weight`;
+    }
+  } else {
+    targetWeightRec = refWeight;
+    weightRationale = `Standard adult ${sexLabel} population reference (~${refWeight} kg)`;
+  }
+
+  // ── 5. Daily Steps Target ───────────────────────────────────────────────────
+  let targetSteps;
+  let stepsRationale;
+
+  if (hasAge && age >= 65) {
+    targetSteps = goal === 'weight_loss' ? 8500 : 7500;
+    stepsRationale = `Longevity baseline with gentle joint impact for age ${age}`;
+  } else if (goal === 'weight_loss') {
+    targetSteps = isFemale ? 10000 : 10500;
+    stepsRationale = `Elevated NEAT expenditure for fat loss`;
+  } else if (goal === 'weight_gain') {
+    targetSteps = isFemale ? 7000 : 7500;
+    stepsRationale = `Maintains cardiovascular base without burning muscle surplus`;
+  } else {
+    targetSteps = isFemale ? 8000 : 8500;
+    stepsRationale = `Cardiovascular & endurance baseline for ${sexLabel}`;
+  }
+
+  if (activity === 'very_active') targetSteps += 1000;
+  else if (activity === 'sedentary') targetSteps = Math.max(6000, targetSteps - 1000);
+
+  // ── 6. Daily Sleep Target ───────────────────────────────────────────────────
+  let targetSleep;
+  let sleepRationale;
+
+  if (hasAge) {
+    if (age < 25) {
+      targetSleep = 8.5;
+      sleepRationale = `Supports cognitive consolidation & neuroplasticity for age ${age}`;
+    } else if (age >= 65) {
+      targetSleep = 7.5;
+      sleepRationale = `Circadian restoration for healthy aging (age ${age})`;
+    } else {
+      targetSleep = isFemale ? 8.0 : 7.5;
+      sleepRationale = `Restores hormonal rhythm & energy for adult ${sexLabel}`;
+    }
+  } else {
+    targetSleep = isFemale ? 8.0 : 7.5;
+    sleepRationale = `Standard adult ${sexLabel} restorative sleep baseline`;
+  }
+
+  if (goal === 'weight_loss') {
+    targetSleep = Math.min(9.0, targetSleep + 0.5);
+    sleepRationale += ` (+0.5h for appetite ghrelin regulation)`;
+  } else if (goal === 'weight_gain') {
+    targetSleep = Math.min(9.0, targetSleep + 0.5);
+    sleepRationale += ` (+0.5h for muscle growth hormone recovery)`;
+  }
+
+  // ── 7. Daily Water Intake Target ────────────────────────────────────────────
+  let targetWater;
+  let waterRationale;
+
+  if (hasWeight) {
+    const mlPerKg = isFemale ? 0.033 : 0.035;
+    const bonus = (goal === 'weight_loss' || activity === 'very_active') ? 0.3 : 0.1;
+    targetWater = Number((curWeight * mlPerKg + bonus).toFixed(1));
+    waterRationale = `${Math.round(mlPerKg * 1000)}ml/kg personalized to your ${curWeight} kg weight`;
+  } else {
+    // Institute of Medicine (IOM) adult fluid standard: Men 3.7L, Women 2.7L
+    targetWater = isFemale ? 2.7 : 3.7;
+    waterRationale = `Institute of Medicine general ${sexLabel} standard (${isFemale ? '2.7L' : '3.7L'})`;
+  }
+
+  // ── 8. Assemble smartRecs object ────────────────────────────────────────────
   smartRecs = {
     daily_calorie_target: targetCal,
     target_weight:        targetWeightRec,
@@ -176,7 +307,7 @@ function computeSmartRecommendations() {
     target_water:         targetWater,
   };
 
-  // Render individual per-field recommendation chips
+  // Render individual per-field chips
   renderFieldChip('rec-chip-calories', 'daily_calorie_target', targetCal, 'Recommended', calRationale);
   renderFieldChip('rec-chip-weight',   'target_weight',        targetWeightRec, 'Target', weightRationale);
   renderFieldChip('rec-chip-protein',  'target_protein',       targetProtein, 'Recommended', proteinRationale);
@@ -186,8 +317,20 @@ function computeSmartRecommendations() {
   renderFieldChip('rec-chip-sleep',    'target_sleep',         targetSleep, 'Recommended', sleepRationale);
   renderFieldChip('rec-chip-water',    'target_water',         targetWater, 'Recommended', waterRationale);
 
+  // ── 9. Render Smart Assistant Box Description ───────────────────────────────
   const descEl = document.getElementById('smart-calc-desc');
-  if (descEl) descEl.innerHTML = overallRationale;
+  if (descEl) {
+    let promptHtml = '';
+    if (!isFullyPersonalized) {
+      promptHtml = ` <a href="profile.html" style="color:var(--teal-600); text-decoration:underline; font-weight:600">Update your profile</a> to unlock exact BMR & metabolic calculations.`;
+    }
+
+    descEl.innerHTML = `
+      <div style="margin-bottom:0.4rem">${statusBadge}</div>
+      <div>${personalizationSummary} For your <strong>${goal.replace('_', ' ')}</strong> goal and <strong>${actLabel}</strong> activity: recommended intake is <strong>${targetCal.toLocaleString()} kcal/day</strong> with <strong>${targetProtein}g protein</strong>, <strong>${targetSteps.toLocaleString()} steps</strong>, and <strong>${targetSleep}h sleep</strong>.${promptHtml}</div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+  }
 }
 
 function renderMonitoring() {
