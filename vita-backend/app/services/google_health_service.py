@@ -444,26 +444,17 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
         Vitals.heart_rate.isnot(None),
     ).order_by(Vitals.recorded_at.desc()).first()
 
-    latest_spo2_row = db.query(Vitals.recorded_at).filter(
-        Vitals.user_id == user_id,
-        Vitals.source == _CONTINUOUS_SOURCE,
-        Vitals.spo2.isnot(None),
-    ).order_by(Vitals.recorded_at.desc()).first()
-
     default_start = now - timedelta(hours=max(hours_back, 72))
-    max_lookback = now - timedelta(days=7)
+    hr_max_lookback = now - timedelta(days=7)
 
     if latest_hr_row and latest_hr_row[0]:
         latest_ts = latest_hr_row[0].replace(tzinfo=timezone.utc) if latest_hr_row[0].tzinfo is None else latest_hr_row[0]
-        hr_sync_start = max(min(latest_ts - timedelta(hours=1), default_start), max_lookback)
+        hr_sync_start = max(min(latest_ts - timedelta(hours=1), default_start), hr_max_lookback)
     else:
-        hr_sync_start = max(default_start, max_lookback)
+        hr_sync_start = max(default_start, hr_max_lookback)
 
-    if latest_spo2_row and latest_spo2_row[0]:
-        latest_ts = latest_spo2_row[0].replace(tzinfo=timezone.utc) if latest_spo2_row[0].tzinfo is None else latest_spo2_row[0]
-        spo2_sync_start = max(min(latest_ts - timedelta(hours=1), default_start), max_lookback)
-    else:
-        spo2_sync_start = max(default_start, max_lookback)
+    # For SpO₂ (daily rollups), look back up to 30 days so the full historical timeline is synchronized
+    spo2_sync_start = now - timedelta(days=30)
 
     overall_sync_start = min(hr_sync_start, spo2_sync_start)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

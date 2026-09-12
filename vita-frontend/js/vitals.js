@@ -311,7 +311,7 @@ async function render(days) {
       makeChart('c-hr', 'Heart rate', hrDaily, '#E53E3E');
     }
 
-    if (spo2Data.length) {
+    if (days <= 1 && spo2Data.length) {
       makeContinuousChart('c-spo2', 'SpO\u2082', spo2Data, '#00BFA5', days);
     } else {
       const spo2Daily = history.map(h => ({ label: dateLabel(h.date), value: h.spo2 }));
