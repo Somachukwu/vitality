@@ -19,6 +19,10 @@ def _profile(facts: dict[str, Any]) -> UserProfile:
     return facts["profile"]
 
 
+def _hour(facts: dict[str, Any]) -> int:
+    return facts.get("current_hour", 12)
+
+
 # ==============================================================================
 # 1. SAFETY GATE RULES (Highest Precedence — Tier: SAFETY)
 # ==============================================================================
@@ -271,14 +275,16 @@ V1_RULES = [
         category=Category.NUTRITION.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            # Use snapshot.calorie_target (always computed via BMR fusion),
-            # NOT profile.target_calories (only set when user enters manual override).
-            # The old guard blocked this rule for all new users who hadn't configured a target.
-            _snapshot(f).meals_logged == 0
-            or (
-                _snapshot(f).calorie_target is not None
-                and _snapshot(f).meals_logged in (1, 2)
-                and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
+            # Only remind users in the evening (>= 19:00 / 7:00 PM).
+            # Nobody eats by 1:00 AM, and meal logging shouldn't be flagged as incomplete at dawn/midday.
+            _hour(f) >= 19
+            and (
+                _snapshot(f).meals_logged == 0
+                or (
+                    _snapshot(f).calorie_target is not None
+                    and _snapshot(f).meals_logged in (1, 2)
+                    and _snapshot(f).total_calories < (_snapshot(f).calorie_target * 0.65)
+                )
             )
         ),
         action=_rule_incomplete_meal_logging_action,

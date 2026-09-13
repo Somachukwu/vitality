@@ -444,6 +444,12 @@ def sync_google_health(user_id: int, db: Session, hours_back: int = 72) -> dict[
         Vitals.heart_rate.isnot(None),
     ).order_by(Vitals.recorded_at.desc()).first()
 
+    latest_spo2_row = db.query(Vitals.recorded_at).filter(
+        Vitals.user_id == user_id,
+        Vitals.source == _CONTINUOUS_SOURCE,
+        Vitals.spo2.isnot(None),
+    ).order_by(Vitals.recorded_at.desc()).first()
+
     default_start = now - timedelta(hours=max(hours_back, 72))
     hr_max_lookback = now - timedelta(days=7)
 

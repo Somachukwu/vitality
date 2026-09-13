@@ -16,6 +16,10 @@ def _profile(facts: dict[str, Any]) -> UserProfile:
     return facts.get("profile")
 
 
+def _hour(facts: dict[str, Any]) -> int:
+    return facts.get("current_hour", 12)
+
+
 def _rule_daily_short_sleep_action(facts: dict[str, Any]) -> Recommendation:
     s = _snapshot(facts)
     p = _profile(facts)
@@ -185,8 +189,13 @@ VITALS_RULES = [
         category=Category.ACTIVITY.value,
         tier=Tier.PRIMARY_ACTION,
         condition=lambda f: (
-            _snapshot(f).total_steps is None
-            or _snapshot(f).total_steps < 10000
+            # Only nudge users in the afternoon / evening (>= 14:00 / 2:00 PM).
+            # Low steps at 1:00 AM or morning hours is expected and should not trigger an alert.
+            _hour(f) >= 14
+            and (
+                _snapshot(f).total_steps is None
+                or _snapshot(f).total_steps < 10000
+            )
         ),
         action=_rule_daily_low_steps_action,
         weight=58,

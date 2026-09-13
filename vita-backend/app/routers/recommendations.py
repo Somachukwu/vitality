@@ -127,10 +127,12 @@ def get_recommendations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
     days: int = 30,
+    hour: Optional[int] = None,
 ):
     """
     Returns all recommendations for the authenticated user, ordered newest first.
-    Accepts optional ?days=N query param to limit history window (default: 30 days).
+    Accepts optional ?days=N query param to limit history window (default: 30 days),
+    and optional ?hour=H (0-23) for client local time.
     """
     now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
     today_start_dt = datetime.combine(now_naive.date(), datetime.min.time())
@@ -142,7 +144,7 @@ def get_recommendations(
         .count()
     )
     if today_count == 0:
-        generate_and_persist_recommendations(current_user.id, db)
+        generate_and_persist_recommendations(current_user.id, db, current_hour=hour)
 
     cutoff_dt = now_naive - timedelta(days=days)
 
@@ -162,6 +164,7 @@ def get_recommendations(
 def get_top_recommendation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    hour: Optional[int] = None,
 ):
     """
     Returns the single active insight for the dashboard.
@@ -237,7 +240,7 @@ def get_top_recommendation(
                 return onboarding_rec
 
         # Otherwise synthesize today's recommendations
-        today_recs = generate_and_persist_recommendations(current_user.id, db)
+        today_recs = generate_and_persist_recommendations(current_user.id, db, current_hour=hour)
         if today_meals_count > 0 and today_recs:
             today_recs = [r for r in today_recs if r.rule_id != "time.midday_meal_prompt"]
         if any(r.rule_id != "lifestyle.set_daily_targets" for r in today_recs):

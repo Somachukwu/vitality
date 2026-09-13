@@ -312,10 +312,10 @@ async function render(days) {
     }
 
     if (days <= 1 && spo2Data.length) {
-      makeContinuousChart('c-spo2', 'SpO\u2082', spo2Data, '#00BFA5', days);
+      makeContinuousChart('c-spo2', 'SpO₂', spo2Data, '#00BFA5', days);
     } else {
       const spo2Daily = history.map(h => ({ label: dateLabel(h.date), value: h.spo2 }));
-      makeChart('c-spo2', 'SpO\u2082', spo2Daily, '#00BFA5');
+      makeChart('c-spo2', 'SpO₂', spo2Daily, '#00BFA5');
     }
 
     // ── Daily-summary charts ────────────────────────────────────────────

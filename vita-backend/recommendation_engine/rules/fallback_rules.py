@@ -19,6 +19,10 @@ def _profile(facts: dict[str, Any]) -> UserProfile:
     return facts["profile"]
 
 
+def _hour(facts: dict[str, Any]) -> int:
+    return facts.get("current_hour", 12)
+
+
 def _rule_set_targets_action(facts: dict[str, Any]) -> Recommendation:
     return Recommendation(
         category=Category.GOAL_PROGRESS.value,
@@ -103,7 +107,8 @@ FALLBACK_RULES = [
         rule_id="lifestyle.daily_wellness_focus",
         category=Category.GOAL_PROGRESS.value,
         tier=Tier.PRIMARY_ACTION,
-        condition=lambda f: _profile(f).target_calories is not None,
+        # Daytime waking hours only (7:00 AM - 10:00 PM). Does not fire during late-night sleep (e.g. 1:00 AM).
+        condition=lambda f: 7 <= _hour(f) < 22 and _profile(f).target_calories is not None,
         action=_rule_daily_wellness_focus_action,
         weight=30,
         cooldown_days=1,
@@ -112,7 +117,8 @@ FALLBACK_RULES = [
         rule_id="lifestyle.macro_balance_insight",
         category=Category.NUTRITION.value,
         tier=Tier.SUPPORTING_INSIGHT,
-        condition=lambda f: True,
+        # Only fires when the user has actually logged at least one meal today to break down macros.
+        condition=lambda f: _snapshot(f).meals_logged >= 1,
         action=_rule_macro_balance_insight_action,
         weight=25,
         cooldown_days=1,

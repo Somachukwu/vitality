@@ -170,9 +170,11 @@ function getRotatingMorningInsight(name) {
   };
 }
 
-// Persist the Good Morning insight once per calendar day using a localStorage guard.
-// This ensures it fires at the first page load after midnight (12:00 AM), not every login.
+// Persist the Good Morning insight once per calendar day during morning hours (6:00 AM - 11:59 AM).
+// This ensures it never fires prematurely in the middle of the night (e.g. 1:00 AM).
 async function checkAndPersistMorningInsight(firstName) {
+  const hour = new Date().getHours();
+  if (hour < 6 || hour >= 12) return; // Morning hours only
   const key = `vita_morning_${todayISO()}`;
   if (localStorage.getItem(key)) return; // already persisted today
   localStorage.setItem(key, '1'); // Lock immediately to prevent duplicate concurrent triggers
@@ -257,7 +259,26 @@ function getContextualFallback(firstName) {
       rule_id: 'lifestyle.set_daily_targets',
     };
   }
-  return getRotatingMorningInsight(firstName);
+  const hour = new Date().getHours();
+  if (hour >= 6 && hour < 12) {
+    return getRotatingMorningInsight(firstName);
+  } else if (hour >= 22 || hour < 6) {
+    return {
+      badge: 'Rest & Recovery 🌙',
+      title: 'Nighttime Recharge',
+      message: `Restful sleep is the foundation of recovery and cognitive sharpness. Unwind, disconnect from screens, and give your body the rest it needs tonight.`,
+      action_data: { action_label: 'View Sleep', route: 'sleep.html' },
+      rule_id: 'lifestyle.nighttime_rest',
+    };
+  } else {
+    return {
+      badge: 'Daily Wellness 🌿',
+      title: 'Daily Wellness Focus',
+      message: `Stay hydrated, keep moving, and prioritize balanced nutrition as you navigate your day.`,
+      action_data: { action_label: 'View Goals', route: 'goals.html' },
+      rule_id: 'lifestyle.daily_wellness_focus',
+    };
+  }
 }
 
 function renderRecFallback() {
@@ -529,7 +550,7 @@ async function loadAll() {
 
   // 5. Fetch Authoritative Top Recommendation from server
   try {
-    const topRec = await api.get('/recommendations/top');
+    const topRec = await api.get(`/recommendations/top?hour=${new Date().getHours()}`);
     if (topRec) {
       if (topRec.rule_id !== 'lifestyle.set_daily_targets') {
         localStorage.setItem('vita_targets_cleared', '1');
@@ -594,7 +615,7 @@ setInterval(async () => {
   }).catch(() => {});
 
   try {
-    const topRec = await api.get('/recommendations/top');
+    const topRec = await api.get(`/recommendations/top?hour=${new Date().getHours()}`);
     if (topRec) {
       if (topRec.rule_id !== 'lifestyle.set_daily_targets') {
         localStorage.setItem('vita_targets_cleared', '1');

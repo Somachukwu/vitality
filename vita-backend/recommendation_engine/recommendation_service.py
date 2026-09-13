@@ -55,6 +55,7 @@ def generate_recommendations(
     history: list[DailySnapshot] | None = None,
     active_cooldown_rules: set[str] | None = None,
     limit_delivery: bool = True,
+    current_hour: Optional[int] = None,
 ) -> list[Recommendation]:
     """
     Pure-function recommendation generator.
@@ -68,9 +69,14 @@ def generate_recommendations(
         sleep_sessions=sleep_sessions,
     )
 
+    if current_hour is None:
+        # Default to user's local hour (West Africa Time: UTC+1)
+        current_hour = (datetime.now(timezone.utc) + timedelta(hours=1)).hour
+
     facts: dict[str, Any] = {
         "snapshot": snapshot,
         "profile": profile,
+        "current_hour": current_hour,
     }
 
     # Statistical Trend and Anomaly detection
@@ -111,6 +117,7 @@ def generate_and_persist_recommendations(
     user_id: int,
     db: Session,
     target_date: Optional[date] = None,
+    current_hour: Optional[int] = None,
 ) -> list[Any]:
     """
     Orchestrates end-to-end recommendation generation for a live database user.
@@ -278,6 +285,7 @@ def generate_and_persist_recommendations(
         history=history_snapshots,
         active_cooldown_rules=cooldown_rules,
         limit_delivery=False,
+        current_hour=current_hour,
     )
 
     # Curate delivery: preserve any active Safety alerts, plus top Primary Action

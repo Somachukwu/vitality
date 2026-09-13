@@ -89,7 +89,7 @@ async function load() {
     </div>
   `;
   try {
-    allRecs = await api.get('/recommendations/');
+    allRecs = await api.get(`/recommendations/?hour=${new Date().getHours()}`);
   } catch {
     allRecs = [];
   }
