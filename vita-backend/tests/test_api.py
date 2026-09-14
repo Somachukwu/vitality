@@ -80,6 +80,18 @@ s, d = req("POST", "/vitals/ingest", {
 }, headers=esp)
 check("POST /vitals/ingest  (ESP32 key)", s, d, 201, "id")
 
+# Smart scale ingest (buffers reading without modifying user.weight)
+s, d = req("POST", "/vitals/ingest", {"weight": 73.5}, headers=esp)
+check("POST /vitals/ingest  (Smart Scale weight)", s, d, 201)
+
+# Check scale live endpoint returns buffered reading
+s, d = req("GET", "/vitals/scale/live", headers=auth)
+check("GET  /vitals/scale/live", s, d, 200, "latest_reading")
+
+# User logs confirmed weight
+s, d = req("POST", "/vitals/scale/log", {"weight": 73.5}, headers=auth)
+check("POST /vitals/scale/log", s, d, 201, "weight")
+
 s, d = req("GET", "/vitals/latest", headers=auth)
 check("GET  /vitals/latest", s, d, 200, "heart_rate")
 

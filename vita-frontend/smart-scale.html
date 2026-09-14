@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Scale — Vitality</title>
+  <link rel="icon" type="image/png" href="vitality-favicon.png" sizes="128x128" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0B0F19" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="vitality-logo-icon.png" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <script>if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')</script>
+</head>
+<body>
+  <div class="app has-side">
+    <aside class="side-nav"></aside>
+    <div>
+      <header class="app-header">
+        <div class="container row between align-center">
+          <div class="row align-center gap-sm">
+            <a href="dashboard.html" class="btn btn-ghost text-sm" style="padding:0.45rem 0.85rem">
+              <i data-lucide="arrow-left"></i> <span>Dashboard</span>
+            </a>
+            <strong style="font-size:1.15rem; margin-left:0.5rem">Smart Scale</strong>
+          </div>
+          <div class="row align-center gap-sm">
+            <button class="btn btn-ghost" id="theme-btn" aria-label="Toggle theme"><i data-lucide="moon"></i></button>
+          </div>
+        </div>
+      </header>
+
+      <main class="container stack" style="max-width:880px; margin:0 auto; padding-top:1.5rem">
+        <!-- Live Connection & Status Bar -->
+        <div class="row between align-center flex-wrap gap-sm">
+          <div class="row align-center gap-sm">
+            <span class="scale-live-badge" id="scale-status-badge">
+              <span class="pulse-dot dot-idle" id="scale-status-dot"></span>
+              <span id="scale-status-text">Connecting to scale...</span>
+            </span>
+            <span class="text-xs muted" id="scale-device-name">Station</span>
+          </div>
+          <div class="text-xs muted" id="scale-last-seen">Last signal: —</div>
+        </div>
+
+        <!-- Main Live Scale Hero Display -->
+        <section class="scale-hero-card">
+          <div class="text-xs uppercase muted font-semibold" style="letter-spacing:0.08em">Live Scale Measurement</div>
+          
+          <div class="scale-gauge-ring" id="scale-gauge">
+            <div class="scale-digital-val" id="live-weight-display">--.-</div>
+            <div class="scale-digital-unit">kg</div>
+          </div>
+
+          <p class="text-sm muted mb-3" id="scale-reading-status">Waiting for reading from smart scale…</p>
+
+          <button class="btn btn-accent btn-block" id="btn-log-weight" disabled style="max-width:360px; font-size:1.05rem; padding:0.875rem 1.5rem">
+            <i data-lucide="plus-circle"></i> Add to log (<span id="btn-weight-num">--</span> kg)
+          </button>
+        </section>
+
+        <!-- Details Grid -->
+        <section class="grid grid-2" style="align-items:start">
+          <!-- Continuous Readings Stream -->
+          <div class="card stack">
+            <div class="row between align-center">
+              <div>
+                <div class="card-title" style="margin-bottom:0.15rem">Continuous Readings</div>
+                <div class="text-xs muted">Readings received in this session</div>
+              </div>
+              <button class="btn btn-ghost text-xs" id="btn-clear-readings" style="padding:0.25rem 0.6rem">Clear</button>
+            </div>
+
+            <div class="list" id="readings-stream-list" style="max-height:360px; overflow-y:auto; gap:0.5rem">
+              <div class="text-sm muted center py-4" id="empty-stream-msg">
+                <i data-lucide="activity" style="width:28px; height:28px; opacity:0.4; margin:0 auto 0.5rem; display:block"></i>
+                No continuous readings yet.<br/>Step on the scale to start measuring.
+              </div>
+            </div>
+          </div>
+
+          <!-- Official Status & Manual Fallback -->
+          <div class="stack">
+            <!-- Currently Saved Weight Card -->
+            <div class="card">
+              <div class="card-title">Officially Logged Weight</div>
+              <div class="row between align-center mt-2">
+                <div>
+                  <div class="num font-bold" style="font-size:2rem" id="cur-logged-val">—</div>
+                  <div class="text-xs muted" id="cur-logged-desc">From latest health record</div>
+                </div>
+                <span class="badge badge-success" style="padding:0.4rem 0.8rem">
+                  <i data-lucide="check"></i> Active
+                </span>
+              </div>
+            </div>
+
+            <!-- Manual Entry Fallback -->
+            <div class="card stack">
+              <div>
+                <div class="card-title" style="margin-bottom:0.2rem">Manual Entry</div>
+                <div class="text-xs muted">Log weight manually if the scale is out of reach</div>
+              </div>
+              <form id="manual-weight-form" class="row gap-sm align-center mt-1">
+                <div style="flex:1">
+                  <input type="number" id="manual-weight-input" step="0.1" min="1" max="300" placeholder="e.g. 72.5" required />
+                </div>
+                <button type="submit" class="btn btn-primary" style="white-space:nowrap" id="btn-manual-submit">
+                  Log Weight
+                </button>
+              </form>
+            </div>
+
+            <!-- Helpful Guidance Card -->
+            <div class="card card-tinted">
+              <div class="row gap-sm align-center mb-1">
+                <i data-lucide="info" style="color:var(--teal); width:18px; height:18px; flex-shrink:0"></i>
+                <strong style="font-size:0.875rem">How to log</strong>
+              </div>
+              <p class="text-xs muted" style="line-height:1.6">
+                Step on the smart scale. The live reading will update in real-time. When you see your confirmed weight, click <strong>Add to log</strong> to save it to your health history and update your personalized recommendations.
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script async src="https://unpkg.com/lucide@latest" onload="window.lucide&&window.lucide.createIcons()"></script>
+  <script type="module" src="js/smart-scale.js"></script>
+</body>
+</html>
+

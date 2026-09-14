@@ -76,3 +76,27 @@ class SyncAllOut(BaseModel):
     sleep_sessions_synced: int = 0
     # The latest vitals are embedded so the frontend doesn't need a second request
     vitals: VitalsLatestOut | None = None
+
+
+class ScaleReadingPoint(BaseModel):
+    weight: float
+    device_id: int | None = None
+    device_name: str | None = None
+    recorded_at: datetime
+    received_at: datetime
+
+
+class ScaleLiveResponse(BaseModel):
+    device_registered: bool
+    device_name: str | None = None
+    is_online: bool
+    last_seen: datetime | None = None
+    current_logged_weight: float | None = None
+    latest_reading: ScaleReadingPoint | None = None
+    recent_readings: list[ScaleReadingPoint] = []
+
+
+class ScaleLogWeightIn(BaseModel):
+    weight: float
+    recorded_at: datetime | None = None
+

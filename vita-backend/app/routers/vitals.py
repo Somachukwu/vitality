@@ -1,3 +1,4 @@
+from collections import deque
 from datetime import datetime, timedelta, timezone, date
 from typing import Optional
 
@@ -15,9 +16,14 @@ from app.models.google_health_token import GoogleHealthToken
 from app.schemas.vitals import (
     VitalsIngest, VitalsLatestOut, VitalsOut,
     VitalsDailySummary, VitalsContinuousPoint, SyncAllOut,
+    ScaleLiveResponse, ScaleLogWeightIn, ScaleReadingPoint,
 )
 
 router = APIRouter(prefix="/vitals", tags=["vitals"])
+
+# Transient in-memory buffer for continuous smart scale readings (user_id -> deque of readings)
+_live_scale_readings: dict[int, deque] = {}
+
 
 # ── Metrics that reset daily (summed/maxed per day) ──────────────────────────
 _DAILY_AGGREGATE_FIELDS = {"steps", "calories_burned", "distance_km", "active_minutes", "floors"}
@@ -100,53 +106,76 @@ def ingest_vitals(
     now = datetime.now(timezone.utc)
     device.last_seen = now
 
-    has_sensor_data = (
-        (body.weight is not None and body.weight > 0)
-        or body.heart_rate is not None
+    has_wearable_data = (
+        body.heart_rate is not None
         or body.spo2 is not None
         or body.temperature is not None
         or body.steps is not None
     )
+    has_weight_data = body.weight is not None and body.weight > 0
 
-    if not has_sensor_data:
-        # Heartbeat / startup ping only — keep device last_seen fresh without inserting dummy vitals
-        db.commit()
-        latest_record = (
-            db.query(Vitals)
-            .filter(Vitals.user_id == device.user_id)
-            .order_by(Vitals.recorded_at.desc())
-            .first()
+    # ── Continuous Scale Buffer ──────────────────────────────────────────
+    # Buffer incoming weight readings into transient live memory for the user.
+    # We do NOT immediately write these to the vitals table or update user.weight
+    # so arbitrary weigh-ins (pets, other people, packages) do not saturate the DB
+    # or corrupt the recommendation engine.
+    if has_weight_data:
+        weight_val = round(float(body.weight), 2)
+        reading_time = body.recorded_at or now
+        if device.user_id not in _live_scale_readings:
+            _live_scale_readings[device.user_id] = deque(maxlen=30)
+        _live_scale_readings[device.user_id].appendleft(
+            ScaleReadingPoint(
+                weight=weight_val,
+                device_id=device.id,
+                device_name=device.device_name,
+                recorded_at=reading_time,
+                received_at=now,
+            )
         )
-        if latest_record:
-            return latest_record
-        return Vitals(
-            id=0,
+
+    if has_wearable_data:
+        # Wearable data IS inserted into vitals history
+        record = Vitals(
             user_id=device.user_id,
             device_id=device.id,
-            recorded_at=now,
+            heart_rate=body.heart_rate,
+            spo2=body.spo2,
+            temperature=body.temperature,
+            steps=body.steps,
+            recorded_at=body.recorded_at or now,
         )
-
-    # ── 1. Insert a new vitals record (preserves full history) ──────────
-    record = Vitals(
-        user_id=device.user_id,
-        device_id=device.id,
-        heart_rate=body.heart_rate,
-        spo2=body.spo2,
-        temperature=body.temperature,
-        weight=body.weight,
-        steps=body.steps,
-        recorded_at=body.recorded_at or now,
-    )
-    db.add(record)
-
-    # ── 2. Sync user profile with latest sensor readings ────────────────
-    user = db.get(User, device.user_id)
-    if user is not None and body.weight is not None:
-        user.weight = body.weight
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        return record
 
     db.commit()
-    db.refresh(record)
-    return record
+    # If device only sent weight or heartbeat ping, return 201 Created with valid VitalsOut
+    latest_record = (
+        db.query(Vitals)
+        .filter(Vitals.user_id == device.user_id)
+        .order_by(Vitals.recorded_at.desc())
+        .first()
+    )
+    if latest_record:
+        if has_weight_data:
+            out = VitalsOut.model_validate(latest_record)
+            out.weight = round(float(body.weight), 2)
+            return out
+        return latest_record
+
+    return VitalsOut(
+        id=0,
+        heart_rate=None,
+        spo2=None,
+        temperature=None,
+        weight=round(float(body.weight), 2) if has_weight_data else None,
+        steps=None,
+        source="station",
+        recorded_at=now,
+    )
+
 
 
 def _auto_sync_if_needed(user_id: int, db: Session, minutes: int = 15) -> Optional[GoogleHealthToken]:
@@ -495,3 +524,130 @@ def sync_all(
         sleep_sessions_synced=sleep_sessions_synced,
         vitals=vitals,
     )
+
+
+# ── Smart Scale Endpoints ──────────────────────────────────────────
+
+@router.get("/scale/live", response_model=ScaleLiveResponse)
+def get_scale_live_readings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return continuous readings streamed from the smart scale, device status, and official weight."""
+    station_dev = (
+        db.query(Device)
+        .filter(Device.user_id == current_user.id, Device.device_type == "station")
+        .order_by(Device.last_seen.desc().nullslast())
+        .first()
+    )
+
+    now_utc = datetime.now(timezone.utc)
+    is_online = False
+    last_seen = None
+    device_name = None
+
+    if station_dev:
+        device_name = station_dev.device_name
+        last_seen = station_dev.last_seen
+        if last_seen:
+            # Device is considered online if seen within 2.5 minutes (heartbeat is 30s)
+            diff = now_utc.replace(tzinfo=None) - last_seen.replace(tzinfo=None)
+            if diff.total_seconds() < 150:
+                is_online = True
+
+    readings_deque = _live_scale_readings.get(current_user.id)
+    recent_readings = list(readings_deque) if readings_deque else []
+    latest_reading = recent_readings[0] if recent_readings else None
+
+    # Get official profile weight
+    current_weight = current_user.weight
+    if current_weight is None:
+        latest_vital = (
+            db.query(Vitals)
+            .filter(Vitals.user_id == current_user.id, Vitals.weight.isnot(None))
+            .order_by(Vitals.recorded_at.desc())
+            .first()
+        )
+        if latest_vital:
+            current_weight = latest_vital.weight
+
+    return ScaleLiveResponse(
+        device_registered=station_dev is not None,
+        device_name=device_name,
+        is_online=is_online,
+        last_seen=last_seen,
+        current_logged_weight=round(float(current_weight), 2) if current_weight is not None else None,
+        latest_reading=latest_reading,
+        recent_readings=recent_readings,
+    )
+
+
+@router.post("/scale/log", response_model=VitalsOut, status_code=201)
+def log_scale_weight(
+    body: ScaleLogWeightIn,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Commit a selected weight reading to the database and update user profile & recommendations."""
+    if body.weight <= 0 or body.weight > 400:
+        raise HTTPException(status_code=400, detail="Invalid weight reading (must be 1–400 kg)")
+
+    now = datetime.now(timezone.utc)
+    rec_time = body.recorded_at or now
+
+    station_dev = (
+        db.query(Device)
+        .filter(Device.user_id == current_user.id, Device.device_type == "station")
+        .first()
+    )
+
+    weight_val = round(float(body.weight), 2)
+
+    # 1. Persist official Vitals record
+    record = Vitals(
+        user_id=current_user.id,
+        device_id=station_dev.id if station_dev else None,
+        weight=weight_val,
+        source="station",
+        recorded_at=rec_time,
+    )
+    db.add(record)
+
+    # 2. Update user profile weight
+    user = db.get(User, current_user.id)
+    if user:
+        user.weight = weight_val
+
+    db.commit()
+    db.refresh(record)
+
+    # 3. Trigger recommendation engine update in background
+    background_tasks.add_task(_run_recommendation_background, current_user.id)
+
+    return record
+
+
+@router.post("/scale/simulate", response_model=ScaleReadingPoint)
+def simulate_scale_reading(
+    body: ScaleLogWeightIn,
+    current_user: User = Depends(get_current_user),
+):
+    """Simulate an incoming live weight reading from the scale (for testing / development)."""
+    if body.weight <= 0 or body.weight > 400:
+        raise HTTPException(status_code=400, detail="Invalid weight reading (must be 1–400 kg)")
+
+    now = datetime.now(timezone.utc)
+    weight_val = round(float(body.weight), 2)
+    reading = ScaleReadingPoint(
+        weight=weight_val,
+        device_id=None,
+        device_name="Simulated Scale",
+        recorded_at=body.recorded_at or now,
+        received_at=now,
+    )
+    if current_user.id not in _live_scale_readings:
+        _live_scale_readings[current_user.id] = deque(maxlen=30)
+    _live_scale_readings[current_user.id].appendleft(reading)
+    return reading
+
