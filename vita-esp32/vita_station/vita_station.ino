@@ -33,8 +33,9 @@
 #endif
 
 // ── State ─────────────────────────────────────────────────────
-unsigned long lastPostMs = 0;
-bool          ntpSynced  = false;
+unsigned long lastWeightPostMs = 0;
+unsigned long lastHeartbeatMs  = 0;
+bool          ntpSynced        = false;
 
 // ─────────────────────────────────────────────────────────────
 //  LED Helper
@@ -134,17 +135,21 @@ void initHX711() {
 
 bool readWeight(float& weightKg) {
   weightKg = NAN;
-  if (!scaleReady || !scale.is_ready()) {
-    Serial.println("[HX711] Scale not ready");
+  if (!scaleReady) {
+    return false;
+  }
+
+  // Allow up to 250ms for HX711 conversion to be ready
+  int tries = 0;
+  while (!scale.is_ready() && tries < 25) {
+    delay(10);
+    tries++;
+  }
+  if (!scale.is_ready()) {
     return false;
   }
 
   float rawKg = scale.get_units(WEIGHT_SAMPLES);
-
-  if (rawKg < WEIGHT_MIN_KG || rawKg > WEIGHT_MAX_KG) {
-    Serial.printf("[HX711] Out of range: %.3f kg (nothing on scale, or calibration needed)\n", rawKg);
-    return false;
-  }
 
 #ifdef WEIGHT_CALIBRATION_OFFSET_KG
   float kg = rawKg + WEIGHT_CALIBRATION_OFFSET_KG;
@@ -153,12 +158,11 @@ bool readWeight(float& weightKg) {
 #endif
 
   if (kg < WEIGHT_MIN_KG || kg > WEIGHT_MAX_KG) {
-    Serial.printf("[HX711] Out of range after calibration offset: %.3f kg\n", kg);
     return false;
   }
 
   weightKg = kg;
-  Serial.printf("[HX711] Raw: %.2f kg | Calibrated: %.2f kg\n", rawKg, weightKg);
+  Serial.printf("[HX711] Weight: %.2f kg (raw: %.2f kg, offset: +%.1f kg)\n", weightKg, rawKg, (float)WEIGHT_CALIBRATION_OFFSET_KG);
   return true;
 }
 
@@ -175,9 +179,6 @@ bool sendPayload(const char* targetUrl, const String& jsonBody) {
   HTTPClient http;
   bool isHttps = (strncmp(targetUrl, "https://", 8) == 0);
   bool success = false;
-
-  // Blink LED 2 times when sending data to backend
-  ledBlink(2, 120);
 
   if (isHttps) {
     WiFiClientSecure secClient;
@@ -265,6 +266,9 @@ void postPayloadUnified(const String& body, const char* description) {
 }
 
 void postPing(const char* reason) {
+  // Heartbeat / connection indicator: 1 blink
+  ledBlink(1, 150);
+
   StaticJsonDocument<128> doc;
   doc["ping"] = true;
   doc["online"] = true;
@@ -278,6 +282,9 @@ void postPing(const char* reason) {
 }
 
 void postWeight(float weightKg) {
+  // Actual weight measurement transmission indicator: 2 blinks
+  ledBlink(2, 100);
+
   StaticJsonDocument<128> doc;
   doc["weight"] = round(weightKg * 10.0f) / 10.0f;   // 1 decimal place
   String ts = isoTimestamp();
@@ -361,11 +368,12 @@ void setup() {
   // Send startup ping immediately so backend knows scale is ONLINE before reading weight
   Serial.println("[Ping] Sending initial startup ping to backend...");
   postPing("startup");
+  lastHeartbeatMs = millis();
 
 #if ENABLE_HX711
   initHX711();
   if (scaleReady) {
-    Serial.println("[Scale] HX711 ready — will post weight or heartbeat every " + String(POST_INTERVAL_MS / 1000) + " s");
+    Serial.println("[Scale] HX711 ready — continuous live readings active (heartbeat every " + String(POST_INTERVAL_MS / 1000) + " s)");
   } else {
     Serial.println("[Scale] HX711 not found — heartbeat pings will maintain online status");
   }
@@ -377,7 +385,7 @@ void setup() {
   Serial.printf("  Cloud backend [Primary]   : %s\n", CLOUD_INGEST_URL);
   Serial.printf("  Local backend [Secondary] : %s\n", LOCAL_INGEST_URL);
   Serial.printf("  Sync mode                 : %d  (1=Dual, 2=Cloud Failover, 3=Cloud Only, 4=Local Only)\n", BACKEND_SYNC_MODE);
-  Serial.printf("  Interval                  : %d s\n\n", POST_INTERVAL_MS / 1000);
+  Serial.printf("  Heartbeat interval        : %d s\n\n", POST_INTERVAL_MS / 1000);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -385,25 +393,31 @@ void setup() {
 // ─────────────────────────────────────────────────────────────
 void loop() {
   unsigned long now = millis();
-  if (now - lastPostMs < POST_INTERVAL_MS) return;
-  lastPostMs = now;
-
-  Serial.println("--------------------------------------------");
 
 #if ENABLE_HX711
   float weight = NAN;
   bool valid = readWeight(weight);
+
   if (valid && !isnan(weight) && weight >= WEIGHT_MIN_KG) {
-    Serial.printf("[Scale] Valid weight detected: %.2f kg — sending to backend\n", weight);
-    postWeight(weight);
-  } else {
-    Serial.println("[Scale] No valid weight (scale empty or sub-threshold) — sending heartbeat ping...");
-    postPing("heartbeat");
+    // A valid weight is detected on the scale!
+    // Post continuous readings every 2.5 seconds while user is on the scale
+    if (now - lastWeightPostMs >= 2500 || lastWeightPostMs == 0) {
+      Serial.printf("[Scale] Valid weight detected: %.2f kg — sending to backend\n", weight);
+      postWeight(weight);
+      lastWeightPostMs = millis();
+      lastHeartbeatMs  = millis();  // Reset heartbeat timer on active measurement
+    }
+    return;
   }
-#else
-  Serial.println("[Loop]  HX711 disabled — sending heartbeat ping");
-  postPing("heartbeat");
 #endif
 
-  Serial.println("--------------------------------------------\n");
+  // If no weight is on the scale (empty / sub-threshold / HX711 disabled):
+  // Send heartbeat ping every POST_INTERVAL_MS (e.g. 30 seconds) to maintain Online status
+  if (now - lastHeartbeatMs >= POST_INTERVAL_MS || lastHeartbeatMs == 0) {
+    Serial.println("[Scale] Scale empty — sending heartbeat ping...");
+    postPing("heartbeat");
+    lastHeartbeatMs = millis();
+  }
+
+  delay(100);
 }
