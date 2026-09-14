@@ -16,10 +16,9 @@ const sessionReadings = [];
 
 // DOM Elements
 const statusBadge = document.getElementById('scale-status-badge');
-const statusDot = document.getElementById('scale-status-dot');
-const statusText = document.getElementById('scale-status-text');
 const deviceNameEl = document.getElementById('scale-device-name');
 const lastSeenEl = document.getElementById('scale-last-seen');
+
 
 const gaugeEl = document.getElementById('scale-gauge');
 const weightDisplayEl = document.getElementById('live-weight-display');
@@ -41,25 +40,61 @@ if (user && user.weight != null) {
   curLoggedVal.textContent = `${Number(user.weight).toFixed(1)} kg`;
 }
 
-function updateConnectionStatus(data) {
-  if (!data.device_registered) {
-    statusDot.className = 'pulse-dot dot-idle';
-    statusText.textContent = 'No Scale Registered';
-    deviceNameEl.textContent = 'Register in Profile';
-  } else if (data.is_online) {
-    statusDot.className = 'pulse-dot';
-    statusText.textContent = 'Scale Connected (Live)';
-    deviceNameEl.textContent = data.device_name || 'Station';
-  } else {
-    statusDot.className = 'pulse-dot dot-idle';
-    statusText.textContent = 'Scale Inactive';
-    deviceNameEl.textContent = data.device_name || 'Station';
-  }
+// Backend stores UTC without 'Z' — append it so JS parses correctly
+function parseServerDate(str) {
+  if (!str) return null;
+  return new Date(str.endsWith('Z') || str.includes('+') ? str : str + 'Z');
+}
 
-  if (data.last_seen) {
-    lastSeenEl.textContent = `Last signal: ${formatTime(data.last_seen)}`;
+// Availability threshold matching profile.js (90 seconds)
+const ONLINE_THRESHOLD_MS = 90 * 1000;
+function isOnline(lastSeenStr) {
+  const lastSeen = parseServerDate(lastSeenStr);
+  if (!lastSeen) return false;
+  return (Date.now() - lastSeen.getTime()) < ONLINE_THRESHOLD_MS;
+}
+
+function formatDeviceTime(value) {
+  const d = parseServerDate(value);
+  if (!d) return 'Never synced';
+  return 'Last sync: ' + d.toLocaleString();
+}
+
+function updateConnectionStatus(data) {
+  const statusBadgeHost = document.getElementById('scale-status-badge');
+
+  if (!data.device_registered) {
+    if (statusBadgeHost) {
+      statusBadgeHost.innerHTML = '<span class="badge badge-warning">&#9679; Not paired</span>';
+    }
+    deviceNameEl.textContent = 'Smart Scale (Not paired)';
+    lastSeenEl.textContent = 'Last sync: Never synced';
+    if (!currentWeight) {
+      readingStatusEl.textContent = 'No smart scale paired · Pair your scale in Profile or enter weight manually';
+    }
   } else {
-    lastSeenEl.textContent = 'Last signal: Never';
+    // Availability strictly mirrors profile scale card logic
+    const online = isOnline(data.last_seen);
+
+    if (statusBadgeHost) {
+      statusBadgeHost.innerHTML = online
+        ? '<span class="badge badge-success">&#9679; Online</span>'
+        : '<span class="badge badge-warning" style="color:#b91c1c">&#9679; Offline</span>';
+    }
+
+    const uidDesc = data.device_uid ? ` (${data.device_uid})` : '';
+    deviceNameEl.textContent = `${data.device_name || 'Smart Scale'}${uidDesc}`;
+    lastSeenEl.textContent = formatDeviceTime(data.last_seen);
+
+    if (online) {
+      if (!currentWeight) {
+        readingStatusEl.textContent = 'Scale is online · Step on the scale to start measuring';
+      }
+    } else {
+      if (!currentWeight) {
+        readingStatusEl.textContent = 'Scale is offline · Connect to Wi-Fi or enter weight manually below';
+      }
+    }
   }
 
   if (data.current_logged_weight != null) {
@@ -70,6 +105,7 @@ function updateConnectionStatus(data) {
     }
   }
 }
+
 
 function handleNewReading(reading) {
   if (!reading || reading.weight == null) return;

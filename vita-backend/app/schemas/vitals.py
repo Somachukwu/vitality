@@ -89,6 +89,7 @@ class ScaleReadingPoint(BaseModel):
 class ScaleLiveResponse(BaseModel):
     device_registered: bool
     device_name: str | None = None
+    device_uid: str | None = None
     is_online: bool
     last_seen: datetime | None = None
     current_logged_weight: float | None = None

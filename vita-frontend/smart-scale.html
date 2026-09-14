@@ -32,16 +32,15 @@
       </header>
 
       <main class="container stack" style="max-width:880px; margin:0 auto; padding-top:1.5rem">
-        <!-- Live Connection & Status Bar -->
+        <!-- Live Connection & Status Bar (reflects profile scale card) -->
         <div class="row between align-center flex-wrap gap-sm">
           <div class="row align-center gap-sm">
-            <span class="scale-live-badge" id="scale-status-badge">
-              <span class="pulse-dot dot-idle" id="scale-status-dot"></span>
-              <span id="scale-status-text">Connecting to scale...</span>
+            <span id="scale-status-badge">
+              <span class="badge badge-warning" style="color:#b91c1c">&#9679; Offline</span>
             </span>
-            <span class="text-xs muted" id="scale-device-name">Station</span>
+            <span class="text-xs muted" id="scale-device-name">Smart Scale</span>
           </div>
-          <div class="text-xs muted" id="scale-last-seen">Last signal: —</div>
+          <div class="text-xs muted" id="scale-last-seen">Last sync: Never synced</div>
         </div>
 
         <!-- Main Live Scale Hero Display -->
@@ -60,9 +59,9 @@
           </button>
         </section>
 
-        <!-- Details Grid -->
-        <section class="grid grid-2" style="align-items:start">
-          <!-- Continuous Readings Stream -->
+        <!-- Details Grid: 2x2 in web view, 1 column stacked on mobile -->
+        <section class="grid grid-2" style="align-items:stretch">
+          <!-- Card 1: Continuous Readings Stream -->
           <div class="card stack">
             <div class="row between align-center">
               <div>
@@ -72,7 +71,7 @@
               <button class="btn btn-ghost text-xs" id="btn-clear-readings" style="padding:0.25rem 0.6rem">Clear</button>
             </div>
 
-            <div class="list" id="readings-stream-list" style="max-height:360px; overflow-y:auto; gap:0.5rem">
+            <div class="list" id="readings-stream-list" style="max-height:220px; overflow-y:auto; gap:0.5rem">
               <div class="text-sm muted center py-4" id="empty-stream-msg">
                 <i data-lucide="activity" style="width:28px; height:28px; opacity:0.4; margin:0 auto 0.5rem; display:block"></i>
                 No continuous readings yet.<br/>Step on the scale to start measuring.
@@ -80,10 +79,9 @@
             </div>
           </div>
 
-          <!-- Official Status & Manual Fallback -->
-          <div class="stack">
-            <!-- Currently Saved Weight Card -->
-            <div class="card">
+          <!-- Card 2: Officially Logged Weight -->
+          <div class="card stack" style="justify-content:space-between">
+            <div>
               <div class="card-title">Officially Logged Weight</div>
               <div class="row between align-center mt-2">
                 <div>
@@ -95,33 +93,33 @@
                 </span>
               </div>
             </div>
+          </div>
 
-            <!-- Manual Entry Fallback -->
-            <div class="card stack">
-              <div>
-                <div class="card-title" style="margin-bottom:0.2rem">Manual Entry</div>
-                <div class="text-xs muted">Log weight manually if the scale is out of reach</div>
-              </div>
-              <form id="manual-weight-form" class="row gap-sm align-center mt-1">
-                <div style="flex:1">
-                  <input type="number" id="manual-weight-input" step="0.1" min="1" max="300" placeholder="e.g. 72.5" required />
-                </div>
-                <button type="submit" class="btn btn-primary" style="white-space:nowrap" id="btn-manual-submit">
-                  Log Weight
-                </button>
-              </form>
+          <!-- Card 3: Manual Entry Fallback -->
+          <div class="card stack">
+            <div>
+              <div class="card-title" style="margin-bottom:0.2rem">Manual Entry</div>
+              <div class="text-xs muted">Log weight manually if the scale is out of reach</div>
             </div>
+            <form id="manual-weight-form" class="row gap-sm align-center mt-1">
+              <div style="flex:1">
+                <input type="number" id="manual-weight-input" step="0.1" min="1" max="300" placeholder="e.g. 72.5" required />
+              </div>
+              <button type="submit" class="btn btn-primary" style="white-space:nowrap" id="btn-manual-submit">
+                Log Weight
+              </button>
+            </form>
+          </div>
 
-            <!-- Helpful Guidance Card -->
-            <div class="card card-tinted">
-              <div class="row gap-sm align-center mb-1">
-                <i data-lucide="info" style="color:var(--teal); width:18px; height:18px; flex-shrink:0"></i>
-                <strong style="font-size:0.875rem">How to log</strong>
-              </div>
-              <p class="text-xs muted" style="line-height:1.6">
-                Step on the smart scale. The live reading will update in real-time. When you see your confirmed weight, click <strong>Add to log</strong> to save it to your health history and update your personalized recommendations.
-              </p>
+          <!-- Card 4: Helpful Guidance Card -->
+          <div class="card card-tinted stack">
+            <div class="row gap-sm align-center">
+              <i data-lucide="info" style="color:var(--teal); width:18px; height:18px; flex-shrink:0"></i>
+              <strong style="font-size:0.875rem">How to log</strong>
             </div>
+            <p class="text-xs muted" style="line-height:1.6">
+              Step on the smart scale. The live reading will update in real-time. When you see your confirmed weight, click <strong>Add to log</strong> to save it to your health history and update your personalized recommendations.
+            </p>
           </div>
         </section>
       </main>

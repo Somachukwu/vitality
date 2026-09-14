@@ -545,14 +545,17 @@ def get_scale_live_readings(
     is_online = False
     last_seen = None
     device_name = None
+    device_uid = None
 
     if station_dev:
         device_name = station_dev.device_name
-        last_seen = station_dev.last_seen
-        if last_seen:
-            # Device is considered online if seen within 2.5 minutes (heartbeat is 30s)
-            diff = now_utc.replace(tzinfo=None) - last_seen.replace(tzinfo=None)
-            if diff.total_seconds() < 150:
+        device_uid = station_dev.device_uid
+        raw_last_seen = station_dev.last_seen
+        if raw_last_seen:
+            last_seen = raw_last_seen.replace(tzinfo=timezone.utc) if raw_last_seen.tzinfo is None else raw_last_seen
+            # Scale availability matches profile.js ONLINE_THRESHOLD_MS (90 seconds)
+            diff = now_utc - last_seen
+            if diff.total_seconds() < 90:
                 is_online = True
 
     readings_deque = _live_scale_readings.get(current_user.id)
@@ -574,12 +577,14 @@ def get_scale_live_readings(
     return ScaleLiveResponse(
         device_registered=station_dev is not None,
         device_name=device_name,
+        device_uid=device_uid,
         is_online=is_online,
         last_seen=last_seen,
         current_logged_weight=round(float(current_weight), 2) if current_weight is not None else None,
         latest_reading=latest_reading,
         recent_readings=recent_readings,
     )
+
 
 
 @router.post("/scale/log", response_model=VitalsOut, status_code=201)
