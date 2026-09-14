@@ -537,7 +537,7 @@ def get_scale_live_readings(
     station_dev = (
         db.query(Device)
         .filter(Device.user_id == current_user.id, Device.device_type == "station")
-        .order_by(Device.last_seen.desc().nullslast())
+        .order_by(Device.last_seen.desc(), Device.id.desc())
         .first()
     )
 
