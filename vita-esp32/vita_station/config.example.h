@@ -49,6 +49,7 @@
 // Step 2: place known weight, enter kg -> SCALE_FACTOR is printed for you
 #define SCALE_FACTOR    420.0f    // <- replace with value from calibration sketch
 #define SCALE_OFFSET    0L        // <- replace with tare raw value from calibration sketch
+#define WEIGHT_CALIBRATION_OFFSET_KG 0.0f // Calibration offset in kg added to raw reading (e.g. 15.0f)
 #define WEIGHT_SAMPLES  10        // readings averaged per POST
 #define WEIGHT_MIN_KG   1.0f      // readings below this are ignored (empty scale)
 #define WEIGHT_MAX_KG   300.0f    // readings above this are ignored (sensor fault)

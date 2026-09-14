@@ -61,22 +61,15 @@
 
         <!-- Details Grid: 2x2 in web view, 1 column stacked on mobile -->
         <section class="grid grid-2" style="align-items:stretch">
-          <!-- Card 1: Continuous Readings Stream -->
-          <div class="card stack">
-            <div class="row between align-center">
-              <div>
-                <div class="card-title" style="margin-bottom:0.15rem">Continuous Readings</div>
-                <div class="text-xs muted">Readings received in this session</div>
-              </div>
-              <button class="btn btn-ghost text-xs" id="btn-clear-readings" style="padding:0.25rem 0.6rem">Clear</button>
+          <!-- Card 1: Helpful Guidance Card (How to log comes first) -->
+          <div class="card card-tinted stack">
+            <div class="row gap-sm align-center">
+              <i data-lucide="info" style="color:var(--teal); width:18px; height:18px; flex-shrink:0"></i>
+              <strong style="font-size:0.875rem">How to log</strong>
             </div>
-
-            <div class="list" id="readings-stream-list" style="max-height:220px; overflow-y:auto; gap:0.5rem">
-              <div class="text-sm muted center py-4" id="empty-stream-msg">
-                <i data-lucide="activity" style="width:28px; height:28px; opacity:0.4; margin:0 auto 0.5rem; display:block"></i>
-                No continuous readings yet.<br/>Step on the scale to start measuring.
-              </div>
-            </div>
+            <p class="text-xs muted" style="line-height:1.6">
+              Step on the smart scale. The live reading will update in real-time. When you see your confirmed weight, click <strong>Add to log</strong> to save it to your health history and update your personalized recommendations.
+            </p>
           </div>
 
           <!-- Card 2: Officially Logged Weight -->
@@ -95,7 +88,25 @@
             </div>
           </div>
 
-          <!-- Card 3: Manual Entry Fallback -->
+          <!-- Card 3: Continuous Readings Stream -->
+          <div class="card stack">
+            <div class="row between align-center">
+              <div>
+                <div class="card-title" style="margin-bottom:0.15rem">Continuous Readings</div>
+                <div class="text-xs muted">Readings received in this session</div>
+              </div>
+              <button class="btn btn-ghost text-xs" id="btn-clear-readings" style="padding:0.25rem 0.6rem">Clear</button>
+            </div>
+
+            <div class="list" id="readings-stream-list" style="max-height:220px; overflow-y:auto; gap:0.5rem">
+              <div class="text-sm muted center py-4" id="empty-stream-msg">
+                <i data-lucide="activity" style="width:28px; height:28px; opacity:0.4; margin:0 auto 0.5rem; display:block"></i>
+                No continuous readings yet.<br/>Step on the scale to start measuring.
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Manual Entry Fallback -->
           <div class="card stack">
             <div>
               <div class="card-title" style="margin-bottom:0.2rem">Manual Entry</div>
@@ -109,17 +120,6 @@
                 Log Weight
               </button>
             </form>
-          </div>
-
-          <!-- Card 4: Helpful Guidance Card -->
-          <div class="card card-tinted stack">
-            <div class="row gap-sm align-center">
-              <i data-lucide="info" style="color:var(--teal); width:18px; height:18px; flex-shrink:0"></i>
-              <strong style="font-size:0.875rem">How to log</strong>
-            </div>
-            <p class="text-xs muted" style="line-height:1.6">
-              Step on the smart scale. The live reading will update in real-time. When you see your confirmed weight, click <strong>Add to log</strong> to save it to your health history and update your personalized recommendations.
-            </p>
           </div>
         </section>
       </main>
