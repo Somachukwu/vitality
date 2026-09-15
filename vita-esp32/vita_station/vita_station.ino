@@ -122,21 +122,38 @@ void syncNTP() {
 void initHX711() {
   scale.begin(HX711_DOUT_PIN, HX711_SCK_PIN);
   scale.set_scale(SCALE_FACTOR);
-  scale.set_offset(SCALE_OFFSET);
+
+  Serial.println("[HX711] Initializing... waiting for scale hardware to settle...");
+  int tries = 0;
+  while (!scale.is_ready() && tries < 30) {
+    delay(100);
+    tries++;
+  }
 
   if (scale.is_ready()) {
     scaleReady = true;
-    Serial.println("[HX711] Ready");
-    Serial.printf("[HX711] Scale factor: %.4f  Offset: %ld\n", (float)SCALE_FACTOR, (long)SCALE_OFFSET);
+    Serial.println("[HX711] Hardware ready!");
+
+    // Auto-tare empty scale so baseline reads 0.00 kg
+    Serial.println("[HX711] Auto-taring empty scale... (ensure nothing is on the scale)");
+    scale.tare(10);
+    Serial.printf("[HX711] Scale factor: %.4f | Tare offset: %ld\n", (float)SCALE_FACTOR, scale.get_offset());
   } else {
     Serial.printf("[HX711] NOT READY — check DOUT=GPIO%d, SCK=GPIO%d, VCC=5V\n", HX711_DOUT_PIN, HX711_SCK_PIN);
+    Serial.println("[HX711] Will auto-retry in background loop.");
   }
 }
 
 bool readWeight(float& weightKg) {
   weightKg = NAN;
   if (!scaleReady) {
-    return false;
+    if (scale.is_ready()) {
+      scaleReady = true;
+      scale.tare(5);
+      Serial.println("[HX711] Scale auto-recovered and tared!");
+    } else {
+      return false;
+    }
   }
 
   // Allow up to 250ms for HX711 conversion to be ready
@@ -155,12 +172,25 @@ bool readWeight(float& weightKg) {
   kg += WEIGHT_CALIBRATION_OFFSET_KG;
 #endif
 
+  // Periodic serial diagnostic log every 2 seconds
+  static unsigned long lastDebugMs = 0;
+  if (millis() - lastDebugMs > 2000) {
+    Serial.printf("[HX711] Live reading: %.2f kg\n", kg);
+    lastDebugMs = millis();
+  }
+
+  // If load cell orientation or wiring is reversed, weight reads negative when stepped on
+  if (kg < -WEIGHT_MIN_KG && -kg <= WEIGHT_MAX_KG) {
+    Serial.printf("[HX711] Inverted load detected (%.2f kg) — auto-inverting to %.2f kg\n", kg, -kg);
+    kg = -kg;
+  }
+
   if (kg < WEIGHT_MIN_KG || kg > WEIGHT_MAX_KG) {
     return false;
   }
 
   weightKg = kg;
-  Serial.printf("[HX711] Weight: %.2f kg\n", weightKg);
+  Serial.printf("[HX711] Valid weight detected: %.2f kg\n", weightKg);
   return true;
 }
 
