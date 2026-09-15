@@ -122,6 +122,7 @@ void syncNTP() {
 void initHX711() {
   scale.begin(HX711_DOUT_PIN, HX711_SCK_PIN);
   scale.set_scale(SCALE_FACTOR);
+  scale.set_offset(SCALE_OFFSET);
 
   Serial.println("[HX711] Initializing... waiting for scale hardware to settle...");
   int tries = 0;
@@ -133,11 +134,7 @@ void initHX711() {
   if (scale.is_ready()) {
     scaleReady = true;
     Serial.println("[HX711] Hardware ready!");
-
-    // Auto-tare empty scale so baseline reads 0.00 kg
-    Serial.println("[HX711] Auto-taring empty scale... (ensure nothing is on the scale)");
-    scale.tare(10);
-    Serial.printf("[HX711] Scale factor: %.4f | Tare offset: %ld\n", (float)SCALE_FACTOR, scale.get_offset());
+    Serial.printf("[HX711] Scale factor: %.4f | Offset: %ld\n", (float)SCALE_FACTOR, (long)SCALE_OFFSET);
   } else {
     Serial.printf("[HX711] NOT READY — check DOUT=GPIO%d, SCK=GPIO%d, VCC=5V\n", HX711_DOUT_PIN, HX711_SCK_PIN);
     Serial.println("[HX711] Will auto-retry in background loop.");
@@ -149,8 +146,7 @@ bool readWeight(float& weightKg) {
   if (!scaleReady) {
     if (scale.is_ready()) {
       scaleReady = true;
-      scale.tare(5);
-      Serial.println("[HX711] Scale auto-recovered and tared!");
+      Serial.println("[HX711] Scale auto-recovered!");
     } else {
       return false;
     }
@@ -167,10 +163,6 @@ bool readWeight(float& weightKg) {
   }
 
   float kg = scale.get_units(WEIGHT_SAMPLES);
-
-#ifdef WEIGHT_CALIBRATION_OFFSET_KG
-  kg += WEIGHT_CALIBRATION_OFFSET_KG;
-#endif
 
   // Periodic serial diagnostic log every 2 seconds
   static unsigned long lastDebugMs = 0;
