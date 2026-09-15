@@ -149,12 +149,10 @@ bool readWeight(float& weightKg) {
     return false;
   }
 
-  float rawKg = scale.get_units(WEIGHT_SAMPLES);
+  float kg = scale.get_units(WEIGHT_SAMPLES);
 
 #ifdef WEIGHT_CALIBRATION_OFFSET_KG
-  float kg = rawKg + WEIGHT_CALIBRATION_OFFSET_KG;
-#else
-  float kg = rawKg;
+  kg += WEIGHT_CALIBRATION_OFFSET_KG;
 #endif
 
   if (kg < WEIGHT_MIN_KG || kg > WEIGHT_MAX_KG) {
@@ -162,7 +160,7 @@ bool readWeight(float& weightKg) {
   }
 
   weightKg = kg;
-  Serial.printf("[HX711] Weight: %.2f kg (raw: %.2f kg, offset: +%.1f kg)\n", weightKg, rawKg, (float)WEIGHT_CALIBRATION_OFFSET_KG);
+  Serial.printf("[HX711] Weight: %.2f kg\n", weightKg);
   return true;
 }
 
